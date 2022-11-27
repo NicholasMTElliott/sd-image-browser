@@ -1,0 +1,126 @@
+html, body, #root {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Ubuntu', 'Roboto', 'Oxygen', 'Cantarell', 'Fira Sans',
+    'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+#browser-page {
+  display: grid;
+  grid-template-areas: 
+    "tabs tabs" 
+    "manager browser";
+  grid-template-rows: 80px auto;
+  grid-template-columns: 160px auto;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+#tabs {
+  grid-area: tabs;
+  border-bottom: 1px solid black;
+}
+
+#manager {
+  grid-area: manager;
+  border-right: 1px solid gray;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+#taglist {
+  flex-grow: 1;
+  flex-shrink: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+#browser {
+  grid-area: browser;
+  position: relative;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: start;
+  align-content: start;
+}
+
+.image-preview {
+  width: 128px;
+  height: 128px;
+}
+
+.image-container {
+  padding: 12px;
+  margin: 4px;
+  border-radius: 6px;
+  border: 1px solid lightgray;
+
+  &.selected {
+    border-color: black;
+    border-width: 2px;
+    background-color: white;
+  }
+}
+
+#toolbar
+{
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+}
+
+#view-container
+{
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  right: 5px;
+  bottom: 5px;
+  padding: 5px;
+  align-items: stretch;
+  justify-content: stretch;
+  display: none;
+  background-color: white;
+  border-radius: 5px;
+  border: 1px solid black;
+  z-index: 20;
+
+  &.visible {
+    display: flex;
+  }
+}
+
+#close-view-container-button
+{
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+#view-image
+{
+  flex-grow: 1;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain !important;
+}
