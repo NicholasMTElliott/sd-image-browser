@@ -58,7 +58,7 @@ const iterateDirectory = async (dirent: Dirent, path: string) => {
             {
                 const tagsFile = await fs.readFile(`${path}/${namePart}.txt`);
                 const fileContents = tagsFile.toString('utf-8');
-                tags = fileContents.split('\n')[0].split(/[,|]/).map(tag => tag.toLowerCase().trim());
+                tags = fileContents.split('\n')[0].split(/[,|]/).map(tag => tag.toLowerCase().trim().replace(/[{()}]/g, ''));
             }
             catch
             {}
@@ -136,6 +136,13 @@ app.get( "/api/images/:imageId", async (req, res) => {
         .toBuffer();
     res.header('content-type', 'image/png');
     res.send(buffer);
+});
+
+app.delete( "/api/images/:imageId", async (req, res) => {
+    const idx = imageLookup[req.params.imageId];
+    const image = foundImages[idx];
+    await fs.rm(`${image.path}/${image.name}.${image.extension}`);
+    await fs.rm(`${image.path}/${image.name}.txt`);
 });
 
 // start the Express server
