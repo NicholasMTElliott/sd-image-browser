@@ -4,10 +4,12 @@ import { ISDImage } from "./ISDImage";
 export function ImageThumbnail(props: { setSelectedImage: any; image: ISDImage; setViewingImage: any; selectedImage: string | undefined; }) {
   const { setSelectedImage, image, setViewingImage, selectedImage } = props;
   const onClick = useCallback(() => {
+    console.error('selecting ' + image.id);
     setSelectedImage(image.id);
     setViewingImage(image.id);
   },
-    [setSelectedImage, setViewingImage, image.id]);
+    [setSelectedImage, setViewingImage, image]);
+
   return <button
     type="button"
     onClick={onClick}

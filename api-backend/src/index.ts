@@ -13,13 +13,14 @@ interface ISDImage
     extension: string;
     tags: string[];
     preview: string;
+    modified: string;
 }
 
 const foundImages: ISDImage[] = [];
-const imageTagLookup: { [key: string]: number[] } = {
+let imageTagLookup: { [key: string]: number[] } = {
     '': []
 };
-const imageLookup: { [key: string]: number } = {};
+let imageLookup: { [key: string]: number } = {};
 let status : 'none' | 'processing' | 'done' | 'error' = 'none';
 
 const app = express();
@@ -38,7 +39,7 @@ const iterateDirectory = async (dirent: Dirent, path: string) => {
             const dir = await fs.opendir(subpath);
             for await (const subdir of dir)
             {
-                iterateDirectory(subdir, subpath);
+                await iterateDirectory(subdir, subpath);
             }
           }
     }
@@ -58,7 +59,7 @@ const iterateDirectory = async (dirent: Dirent, path: string) => {
             {
                 const tagsFile = await fs.readFile(`${path}/${namePart}.txt`);
                 const fileContents = tagsFile.toString('utf-8');
-                tags = fileContents.split('\n')[0].split(/[,|]/).map(tag => tag.toLowerCase().trim().replace(/[{()}]/g, ''));
+                tags = fileContents.split('\n')[0].split(/[,|]/).map(tag => tag.toLowerCase().trim().replace(/[{()}]/g, '').trim());
             }
             catch
             {}
@@ -69,28 +70,25 @@ const iterateDirectory = async (dirent: Dirent, path: string) => {
                 .resize(128, 128, { fit: 'contain' })
                 .jpeg({quality: 60})
                 .toBuffer();
-            
-            const imageIndex = foundImages.length;
-            const thumbnailImage = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
-            foundImages.push({
-                id,
-                fullFileName,
-                path,
-                name: namePart,
-                extension,
-                tags,
-                preview: thumbnailImage
-            });
 
-            for(const tag of tags)
+            try
             {
-                imageTagLookup[tag] = [...(imageTagLookup[tag] ?? []), imageIndex];
+                const imageIndex = foundImages.length;
+                const thumbnailImage = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
+                const stat = await fs.stat(fullFileName);
+                foundImages.push({
+                    id,
+                    fullFileName,
+                    path,
+                    name: namePart,
+                    extension,
+                    tags,
+                    preview: thumbnailImage,
+                    modified: stat.mtime.toISOString()
+                });
             }
-            if(tags.length == 0)
-            {
-                imageTagLookup[''].push(imageIndex);
-            }
-            imageLookup[id] = imageIndex;
+            catch(err)
+            {}
         }
     }
 }
@@ -102,8 +100,9 @@ const inventoryImages = async () => {
         const dir = await fs.opendir(sourceDir);
         for await (const dirent of dir)
         {
-          iterateDirectory(dirent, sourceDir);
+          await iterateDirectory(dirent, sourceDir);
         }
+        reindex();
         status = 'done';
     } 
     catch (err) 
@@ -129,20 +128,50 @@ app.get( "/api/tags", ( req, res ) => {
 } );
 
 app.get( "/api/images/:imageId", async (req, res) => {
-    const idx = imageLookup[req.params.imageId];
-    const image = foundImages[idx];
-    const buffer = await sharp(image.fullFileName)
-        .png()
-        .toBuffer();
-    res.header('content-type', 'image/png');
-    res.send(buffer);
+    try{
+        const idx = imageLookup[req.params.imageId];
+        console.error(`Found id ${req.params.imageId} to ${idx}`);
+        const image = foundImages[idx];
+        console.log(`Mapped ${req.params.imageId} to ${idx} which worked out to ${image.id} ${image.fullFileName}`);
+        const buffer = await sharp(image.fullFileName)
+            .png()
+            .toBuffer();
+        res.header('content-type', 'image/png');
+        res.send(buffer);
+    }
+    catch(err)
+    {
+        res.statusCode = 500;
+        res.end();
+    }
 });
 
 app.delete( "/api/images/:imageId", async (req, res) => {
-    const idx = imageLookup[req.params.imageId];
-    const image = foundImages[idx];
-    await fs.rm(`${image.path}/${image.name}.${image.extension}`);
-    await fs.rm(`${image.path}/${image.name}.txt`);
+    try
+    {
+        const idx = imageLookup[req.params.imageId];
+        const image = foundImages[idx];
+
+        console.error(`Will delete ${req.params.imageId} at ${image.path}/${image.name}`);
+        await fs.rm(`${image.path}/${image.name}.${image.extension}`);
+        try {
+            await fs.rm(`${image.path}/${image.name}.txt`); // Ok if this failes
+        }
+        catch(err)
+        {} 
+        
+        foundImages.splice(idx, 1);
+        // reindex
+        reindex();
+        res.statusCode = 204;
+        res.end();
+    }
+    catch(err)
+    {
+        res.statusCode = 500;
+        res.end();
+        console.error(err);
+    }
 });
 
 // start the Express server
@@ -151,3 +180,18 @@ app.listen( port, () => {
 } );
 
 inventoryImages();
+
+function reindex() {
+    imageLookup = {};
+    imageTagLookup = { '': [] };
+    for (let imageIndex = 0; imageIndex < foundImages.length; imageIndex++) {
+        const tags = foundImages[imageIndex].tags;
+        for (const tag of tags) {
+            imageTagLookup[tag] = [...(imageTagLookup[tag] ?? []), imageIndex];
+        }
+        if (tags.length == 0) {
+            imageTagLookup[''].push(imageIndex);
+        }
+        imageLookup[foundImages[imageIndex].id] = imageIndex;
+    }
+}
