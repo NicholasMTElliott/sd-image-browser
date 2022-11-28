@@ -33,7 +33,7 @@ export default function App() {
 
   const [selectedTags, setSelectedTags] = useState<{[key: string]: boolean}>({});
   const showAllTags = Object.keys(selectedTags).filter(tagName => selectedTags[tagName]).length === 0;
-  const [selectedImage, setSelectedImage] = useState<string>();
+  const [selectedImage, setSelectedImage] = useState<number>();
   const [viewingImage, setViewingImage] = useState<string>();
 
 
@@ -61,30 +61,30 @@ export default function App() {
   const sortByDate = useCallback(()=>setSortBy('mtime'), []);
 
   const onNext = useCallback(() => {
-    if(!viewingImage?.length)
+    if(selectedImage === undefined)
       return;
 
-    const index = filteredImages.findIndex(i => i.id === viewingImage);
+    const index = selectedImage;
     console.error(`Current index is ${index}`);
     const nextIndex = (index+1)%filteredImages.length;
     console.error(`Next index is ${nextIndex}`);
     const nextImage = filteredImages[nextIndex].id;
     console.error(`Next image is ${nextImage}`);
-    setSelectedImage(nextImage);
+    setSelectedImage(nextIndex);
     setViewingImage(nextImage);
-  }, [viewingImage, filteredImages]);
+  }, [selectedImage, filteredImages]);
 
 
   const onPrev = useCallback(() => {
-    if(!viewingImage?.length)
+    if(selectedImage === undefined)
       return;
 
-    const index = filteredImages.findIndex(i => i.id === viewingImage);
+    const index = selectedImage;
     const prevIndex = index === 0 ? filteredImages.length-1 : index - 1;
     const prevImage = filteredImages[prevIndex].id;
-    setSelectedImage(prevImage);
+    setSelectedImage(prevIndex);
     setViewingImage(prevImage);
-  }, [viewingImage, filteredImages]);
+  }, [selectedImage, filteredImages]);
 
   const filteredTags = useMemo(() => Object.keys(tags)
     .filter(tagName => filter.length === 0 || tagName.indexOf(filter) >= 0)
@@ -119,6 +119,12 @@ export default function App() {
     };
   }, [onNext, onPrev, onDelete, viewingImage]);
 
+  const onSelect = useCallback((imageId: string) => {
+    const imageIndex = filteredImages.findIndex(img => img.id === imageId);
+    setSelectedImage(imageIndex);
+    setViewingImage(imageId);
+  }, [filteredImages]);
+
   const viewingImageRef = useMemo(() => images.find(i => i.id === viewingImage), [images, viewingImage]);
 
   return <div id='browser-page'>
@@ -142,13 +148,12 @@ export default function App() {
         <button type='button'>Delete</button>
       </div>
       {
-        filteredImages.map(image => (
+        filteredImages.map((image, idx) => (
           <ImageThumbnail 
-            key={image.id} 
-            setSelectedImage={setSelectedImage} 
+            key={image.id}  
             image={image} 
-            setViewingImage={setViewingImage} 
-            selectedImage={selectedImage} />
+            onSelect={onSelect}
+            isSelected={selectedImage === idx} />
         ))
       }
     </div>

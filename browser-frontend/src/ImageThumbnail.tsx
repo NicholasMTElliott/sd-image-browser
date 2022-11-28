@@ -1,19 +1,21 @@
 import { useCallback } from "react";
 import { ISDImage } from "./ISDImage";
 
-export function ImageThumbnail(props: { setSelectedImage: any; image: ISDImage; setViewingImage: any; selectedImage: string | undefined; }) {
-  const { setSelectedImage, image, setViewingImage, selectedImage } = props;
+export function ImageThumbnail(props: { 
+    image: ISDImage; 
+    isSelected: boolean;
+    onSelect: (id: string) => any;
+  }) {
+  const { isSelected, image, onSelect } = props;
   const onClick = useCallback(() => {
-    console.error('selecting ' + image.id);
-    setSelectedImage(image.id);
-    setViewingImage(image.id);
+    onSelect(image.id);
   },
-    [setSelectedImage, setViewingImage, image]);
+    [onSelect, image.id]);
 
   return <button
     type="button"
     onClick={onClick}
-    className={`image-container ${selectedImage === image.id && 'selected'}`}
+    className={`image-container ${isSelected && 'selected'}`}
     key={image.id}>
     <img className='image-preview' alt={image.name} src={image.preview} />
   </button>;
