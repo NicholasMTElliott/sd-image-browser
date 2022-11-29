@@ -201,9 +201,10 @@ app.put("/api/images/:imageId/pin", async (req, res) => {
     {
         const idx = imageLookup[req.params.imageId];
         const image = foundImages[idx];
-        await fs.copyFile(`${image.path}/${image.name}.${image.extension}`, `${sourceDir}/_pinned/${image.name}.${image.id}.${image.extension}`);
+        await fs.mkdir(`${sourceDir}/_pinned`, { recursive: true });
+        await fs.copyFile(`${image.fullFileName}`, `${sourceDir}/_pinned/_${image.name}.${image.id}.${image.extension}`);
         try{
-            await fs.copyFile(`${image.path}/${image.name}.txt`, `${sourceDir}/_pinned/${image.name}.${image.id}.txt`);
+            await fs.copyFile(`${image.path}/${image.name}.txt`, `${sourceDir}/_pinned/_${image.name}.${image.id}.txt`);
         }catch(err){}
     }
     catch(err)

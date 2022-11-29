@@ -177,7 +177,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeys);
     };
-  }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages]);
+  }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages, onPin]);
 
   const onSelect = useCallback((imageId: string) => {
     const imageIndex = filteredImages.findIndex(img => img.id === imageId);
