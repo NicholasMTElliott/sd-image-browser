@@ -8,6 +8,7 @@ export default function App() {
   const [images, setImages] = useState<ISDImage[]>([]);
   const [filter, setFilter] = useState('');
   const [sortBy, setSortBy] = useState<'name'|'mtime'>('name');
+  const [direction, setDirection] = useState<'up'|'down'>('up');
   const [tags, setTags] = useState<{[key: string]: number[]}>({});
 
   const fetchSequenceCount = useRef(1);
@@ -31,20 +32,6 @@ export default function App() {
     fetchData();
   }, [fetchData]);
 
-  const deleteSequenceCount = useRef(1);
-  const onDelete = useCallback(async (id: string) => {
-    const sequence = deleteSequenceCount.current+1;
-    deleteSequenceCount.current = sequence;
-
-    // pre-strip out this item
-    setViewingImage(undefined);
-    setImages(images.filter(img => img.id !== id));
-    await fetch(`/api/images/${id}`, { method: 'delete' });
-    if(deleteSequenceCount.current === sequence)
-    {
-      fetchData();
-    }
-  }, [fetchData, images]);
   
 
   const [selectedTags, setSelectedTags] = useState<{[key: string]: boolean}>({});
@@ -54,15 +41,25 @@ export default function App() {
 
 
   const sortedImages = useMemo(() => {
+    let sorted;
     if(sortBy === 'name')
     {
       // eslint-disable-next-line no-nested-ternary
-      return images.sort((a,b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0 )
+      sorted = images.sort((a,b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0 )
     }
+    else
+    {
     
     // eslint-disable-next-line no-nested-ternary
-    return images.sort((a,b) => a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0 )
-  }, [images, sortBy]);
+      sorted = images.sort((a,b) => a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0 )
+    }
+    if(direction === 'down')
+    {
+      sorted = sorted.reverse();
+    }
+
+    return sorted;
+  }, [images, sortBy, direction]);
 
   const filteredImages = useMemo(() => {
     if(showAllTags)
@@ -72,9 +69,6 @@ export default function App() {
       
     return sortedImages.filter(image => image.tags.filter(tagName => selectedTags[tagName]).length > 0);
   }, [sortedImages, showAllTags, selectedTags]);
-
-  const sortByName = useCallback(()=>setSortBy('name'), []);
-  const sortByDate = useCallback(()=>setSortBy('mtime'), []);
 
   const onNext = useCallback(() => {
     if(selectedImage === undefined)
@@ -87,8 +81,11 @@ export default function App() {
     const nextImage = filteredImages[nextIndex].id;
     console.error(`Next image is ${nextImage}`);
     setSelectedImage(nextIndex);
-    setViewingImage(nextImage);
-  }, [selectedImage, filteredImages]);
+    if(viewingImage !== undefined)
+    {
+      setViewingImage(nextImage);
+    }
+  }, [selectedImage, filteredImages, viewingImage]);
 
 
   const onPrev = useCallback(() => {
@@ -99,15 +96,39 @@ export default function App() {
     const prevIndex = index === 0 ? filteredImages.length-1 : index - 1;
     const prevImage = filteredImages[prevIndex].id;
     setSelectedImage(prevIndex);
-    setViewingImage(prevImage);
-  }, [selectedImage, filteredImages]);
+    if(viewingImage !== undefined)
+    {
+      setViewingImage(prevImage);
+    }
+  }, [selectedImage, filteredImages, viewingImage]);
 
   const filteredTags = useMemo(() => Object.keys(tags)
     .filter(tagName => filter.length === 0 || tagName.indexOf(filter) >= 0)
     .sort(), 
   [tags, filter]);
-
   
+  const deleteSequenceCount = useRef(1);
+  const onDelete = useCallback(async () => {
+    if(selectedImage === undefined)
+    {
+      return;
+    }
+
+    const sequence = deleteSequenceCount.current+1;
+    deleteSequenceCount.current = sequence;
+
+    const {id} = filteredImages[selectedImage];
+
+    // pre-strip out this item
+    setViewingImage(undefined);
+    setImages(images.filter(img => img.id !== id));
+    await fetch(`/api/images/${id}`, { method: 'delete' });
+    if(deleteSequenceCount.current === sequence)
+    {
+      fetchData();
+    }
+  }, [fetchData, filteredImages, images, selectedImage]);
+
   useEffect(() => {
     const handleKeys = (event: any) => {
        if (event.keyCode === 37) {
@@ -118,9 +139,17 @@ export default function App() {
        onNext();
        event.preventDefault();
       }
-      else if (viewingImage && event.keyCode === 68) {
-        onDelete(viewingImage);
+      else if (event.keyCode === 68) {
+        onDelete();
         event.preventDefault();
+      }
+      else if(event.keyCode === 32 && selectedImage !== undefined) {
+        setViewingImage(filteredImages[selectedImage].id);
+        event.preventDefault();
+      }
+      else if(event.keyCode === 27)
+      {
+        setViewingImage(undefined);  
       }
       else
       {
@@ -133,7 +162,7 @@ export default function App() {
     return () => {
       window.removeEventListener('keydown', handleKeys);
     };
-  }, [onNext, onPrev, onDelete, viewingImage]);
+  }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages]);
 
   const onSelect = useCallback((imageId: string) => {
     const imageIndex = filteredImages.findIndex(img => img.id === imageId);
@@ -142,6 +171,45 @@ export default function App() {
   }, [filteredImages]);
 
   const viewingImageRef = useMemo(() => images.find(i => i.id === viewingImage), [images, viewingImage]);
+
+  const sortByName = useCallback(() => {
+    if(sortBy === 'name')
+    {
+      if(direction === 'up')
+      {
+        setDirection('down');
+      }
+      else
+      {
+        setDirection('up');
+      }
+    }
+    else
+    {
+      setSortBy('name');
+      setDirection('up');
+    }
+  }, [direction, sortBy]);
+
+  const sortByDate = useCallback(() => {
+    if(sortBy === 'mtime')
+    {
+      if(direction === 'up')
+      {
+        setDirection('down');
+      }
+      else
+      {
+        setDirection('up');
+      }
+    }
+    else
+    {
+      setSortBy('mtime');
+      setDirection('up');
+    }
+  }, [direction, sortBy]);
+
 
   return <div id='browser-page'>
     <div id='tabs'>
@@ -156,11 +224,8 @@ export default function App() {
     </div>
     <div id='browser'>
       <div id='toolbar'>
-        <label htmlFor="radSortByName"><input id='radSortByName' type='radio' checked={sortBy === 'name'} onClick={sortByName}/>Name</label>
-        <label htmlFor="radSortByDate"><input id='radSortByDate' type='radio' checked={sortBy === 'mtime'} onClick={sortByDate}/>Date</label>
-        <button type='button'>Select</button>
-        <button type='button'>Upvote</button>
-        <button type='button'>Downvote</button>
+        <button type="button" onClick={sortByName}>Name {sortBy === 'name' && direction}</button>
+        <button type="button" onClick={sortByDate}>Date {sortBy === 'mtime' && direction}</button>
         <button type='button'>Delete</button>
       </div>
       {
@@ -176,7 +241,8 @@ export default function App() {
     <div id='view-container' className={viewingImage && 'visible'}>
       <button id='close-view-container-button' type='button' onClick={() => setViewingImage(undefined)}>X</button>
       <div id='view-taglist'>
-        <div>{images.find(i => i.id === viewingImage)?.name}</div>
+        <div>{viewingImageRef?.name}</div>
+        <div>{viewingImageRef?.path}</div>
         <div>{viewingImageRef ? new Date(viewingImageRef.modified).toLocaleString() : ''}</div>
         {
           viewingImageRef?.tags.map(tag => <div key={tag} className="view-taglist-tag">{tag}</div>)
