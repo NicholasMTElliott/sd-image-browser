@@ -86,6 +86,13 @@ const iterateDirectory = async (dirent: Dirent, path: string) => {
                     preview: thumbnailImage,
                     modified: stat.mtime.toISOString()
                 });
+                for (const tag of tags) {
+                    imageTagLookup[tag] = [...(imageTagLookup[tag] ?? []), imageIndex];
+                }
+                if (tags.length == 0) {
+                    imageTagLookup[''].push(imageIndex);
+                }
+                imageLookup[foundImages[imageIndex].id] = imageIndex;
             }
             catch(err)
             {}
