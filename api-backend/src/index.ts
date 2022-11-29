@@ -73,26 +73,37 @@ const iterateDirectory = async (dirent: Dirent, path: string) => {
 
             try
             {
-                const imageIndex = foundImages.length;
-                const thumbnailImage = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
-                const stat = await fs.stat(fullFileName);
-                foundImages.push({
-                    id,
-                    fullFileName,
-                    path,
-                    name: namePart,
-                    extension,
-                    tags,
-                    preview: thumbnailImage,
-                    modified: stat.mtime.toISOString()
-                });
-                for (const tag of tags) {
-                    imageTagLookup[tag] = [...(imageTagLookup[tag] ?? []), imageIndex];
+                // see if there's already an entry for this
+                const existingEntry = foundImages.find(i => i.path === path && i.name === namePart);
+                if(existingEntry && extension === 'png')
+                {
+                    // we replace the existing entry
+                    existingEntry.extension = extension;
+                    existingEntry.tags = tags;
                 }
-                if (tags.length == 0) {
-                    imageTagLookup[''].push(imageIndex);
+                else if(!existingEntry)
+                {
+                    const imageIndex = foundImages.length;
+                    const thumbnailImage = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
+                    const stat = await fs.stat(fullFileName);
+                    foundImages.push({
+                        id,
+                        fullFileName,
+                        path,
+                        name: namePart,
+                        extension,
+                        tags,
+                        preview: thumbnailImage,
+                        modified: stat.mtime.toISOString()
+                    });
+                    for (const tag of tags) {
+                        imageTagLookup[tag] = [...(imageTagLookup[tag] ?? []), imageIndex];
+                    }
+                    if (tags.length == 0) {
+                        imageTagLookup[''].push(imageIndex);
+                    }
+                    imageLookup[foundImages[imageIndex].id] = imageIndex;
                 }
-                imageLookup[foundImages[imageIndex].id] = imageIndex;
             }
             catch(err)
             {}
