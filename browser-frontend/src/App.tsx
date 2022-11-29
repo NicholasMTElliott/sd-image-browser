@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImageThumbnail } from "./ImageThumbnail";
 import { ISDImage } from "./ISDImage";
 import { SelectableTag } from "./SelectableTag";
+
 
 export default function App() {
   const [images, setImages] = useState<ISDImage[]>([]);
@@ -9,14 +10,20 @@ export default function App() {
   const [sortBy, setSortBy] = useState<'name'|'mtime'>('name');
   const [tags, setTags] = useState<{[key: string]: number[]}>({});
 
+  const fetchSequenceCount = useRef(1);
   const fetchData = useCallback(async () => {
+    const sequence = fetchSequenceCount.current+1;
+    fetchSequenceCount.current = sequence;
+    const imageTask = await fetch('/api/images');
+    const tagTask = await fetch('/api/tags');
+
+    const images = await (await imageTask).json();
+    const tags = await(await tagTask).json();
+
+    if(sequence === fetchSequenceCount.current)
     {
-      const response = await fetch('/api/images');
-      setImages(await response.json());
-    }
-    {
-      const response = await fetch('/api/tags');
-      setTags(await response.json());
+      setImages(images);
+      setTags(tags); 
     }
   }, []);
 
@@ -24,12 +31,19 @@ export default function App() {
     fetchData();
   }, [fetchData]);
 
+  const deleteSequenceCount = useRef(1);
   const onDelete = useCallback(async (id: string) => {
+    const sequence = deleteSequenceCount.current+1;
+    deleteSequenceCount.current = sequence;
+
     // pre-strip out this item
     setViewingImage(undefined);
     setImages(images.filter(img => img.id !== id));
     await fetch(`/api/images/${id}`, { method: 'delete' });
-    fetchData();
+    if(deleteSequenceCount.current === sequence)
+    {
+      fetchData();
+    }
   }, [fetchData, images]);
   
 
