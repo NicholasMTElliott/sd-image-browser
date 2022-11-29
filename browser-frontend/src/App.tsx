@@ -25,10 +25,12 @@ export default function App() {
   }, [fetchData]);
 
   const onDelete = useCallback(async (id: string) => {
-    await fetch(`/api/images/${id}`, { method: 'delete' });
+    // pre-strip out this item
     setViewingImage(undefined);
+    setImages(images.filter(img => img.id !== id));
+    await fetch(`/api/images/${id}`, { method: 'delete' });
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, images]);
   
 
   const [selectedTags, setSelectedTags] = useState<{[key: string]: boolean}>({});
