@@ -11,96 +11,21 @@ export default function App() {
   const [direction, setDirection] = useState<'up'|'down'>('up');
   const [tags, setTags] = useState<{[key: string]: number[]}>({});
 
-  const fetchSequenceCount = useRef(1);
-  const fetchData = useCallback(async () => {
-    const sequence = fetchSequenceCount.current+1;
-    fetchSequenceCount.current = sequence;
-    const imageTask = await fetch('/api/images');
-    const tagTask = await fetch('/api/tags');
-
-    const images = await (await imageTask).json();
-    const tags = await(await tagTask).json();
-
-    if(sequence === fetchSequenceCount.current)
-    {
-      setImages(images);
-      setTags(tags); 
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  
-
   const [selectedTags, setSelectedTags] = useState<{[key: string]: boolean}>({});
   const showAllTags = Object.keys(selectedTags).filter(tagName => selectedTags[tagName]).length === 0;
   const [selectedImage, setSelectedImage] = useState<number>();
   const [viewingImage, setViewingImage] = useState<string>();
 
+  const fetchData = useFetchData(setImages, setTags);
 
-  const sortedImages = useMemo(() => {
-    let sorted;
-    if(sortBy === 'name')
-    {
-      // eslint-disable-next-line no-nested-ternary
-      sorted = images.sort((a,b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0 )
-    }
-    else
-    {
-    
-    // eslint-disable-next-line no-nested-ternary
-      sorted = images.sort((a,b) => a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0 )
-    }
-    if(direction === 'down')
-    {
-      sorted = sorted.reverse();
-    }
+  // on mount, fetch
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-    return sorted;
-  }, [images, sortBy, direction]);
+  const filteredImages = useFilteredAndSortedImages(sortBy, images, direction, showAllTags, selectedTags);
 
-  const filteredImages = useMemo(() => {
-    if(showAllTags)
-    {
-      return sortedImages;
-    }
-      
-    return sortedImages.filter(image => image.tags.filter(tagName => selectedTags[tagName]).length > 0);
-  }, [sortedImages, showAllTags, selectedTags]);
-
-  const onNext = useCallback(() => {
-    if(selectedImage === undefined)
-      return;
-
-    const index = selectedImage;
-    console.error(`Current index is ${index}`);
-    const nextIndex = (index+1)%filteredImages.length;
-    console.error(`Next index is ${nextIndex}`);
-    const nextImage = filteredImages[nextIndex].id;
-    console.error(`Next image is ${nextImage}`);
-    setSelectedImage(nextIndex);
-    if(viewingImage !== undefined)
-    {
-      setViewingImage(nextImage);
-    }
-  }, [selectedImage, filteredImages, viewingImage]);
-
-
-  const onPrev = useCallback(() => {
-    if(selectedImage === undefined)
-      return;
-
-    const index = selectedImage;
-    const prevIndex = index === 0 ? filteredImages.length-1 : index - 1;
-    const prevImage = filteredImages[prevIndex].id;
-    setSelectedImage(prevIndex);
-    if(viewingImage !== undefined)
-    {
-      setViewingImage(prevImage);
-    }
-  }, [selectedImage, filteredImages, viewingImage]);
+  const { onPrev, onNext } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
 
   const filteredTags = useMemo(() => Object.keys(tags)
     .filter(tagName => filter.length === 0 || tagName.indexOf(filter) >= 0)
@@ -140,44 +65,7 @@ export default function App() {
     }
   }, [fetchData, filteredImages, images, selectedImage]);
 
-  useEffect(() => {
-    const handleKeys = (event: any) => {
-       if (event.keyCode === 37) {
-        onPrev();
-        event.preventDefault();
-      }
-      else if (event.keyCode === 39) {
-       onNext();
-       event.preventDefault();
-      }
-      else if (event.keyCode === 68) {
-        onDelete();
-        event.preventDefault();
-      }
-      else if(event.keyCode === 32 && selectedImage !== undefined) {
-        setViewingImage(filteredImages[selectedImage].id);
-        event.preventDefault();
-      }
-      else if(event.keyCode === 70 && selectedImage !== undefined) {
-        onPin();
-        event.preventDefault();
-      }
-      else if(event.keyCode === 27)
-      {
-        setViewingImage(undefined);  
-      }
-      else
-      {
-        console.error(`Other key: keyCode ${event.keyCode} key ${event.key}`, event.keyCode, event.key);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeys);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeys);
-    };
-  }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages, onPin]);
+  useKeyboardHandlers(onPrev, onNext, onDelete, selectedImage, setViewingImage, filteredImages, onPin, viewingImage);
 
   const onSelect = useCallback((imageId: string) => {
     const imageIndex = filteredImages.findIndex(img => img.id === imageId);
@@ -239,14 +127,15 @@ export default function App() {
     </div>
     <div id='browser'>
       <div id='toolbar'>
+        <button type="button" onClick={fetchData}>Refresh</button>
         <button type="button" onClick={sortByName}>Name {sortBy === 'name' && direction}</button>
         <button type="button" onClick={sortByDate}>Date {sortBy === 'mtime' && direction}</button>
-        <button type='button'>Delete</button>
+        <button type='button' onClick={onDelete}>Delete</button>
       </div>
       {
         filteredImages.map((image, idx) => (
           <ImageThumbnail 
-            key={image.id}  
+            key={`${image.name}.${image.id}`}  
             image={image} 
             onSelect={onSelect}
             isSelected={selectedImage === idx} />
@@ -266,5 +155,126 @@ export default function App() {
       <div id='view-image' style={{backgroundImage: `url(/api/images/${viewingImage})`}} title={viewingImageRef?.name}/>
     </div>
   </div>;
+}
+
+function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onDelete: () => Promise<void>, selectedImage: number | undefined, setViewingImage, filteredImages: ISDImage[], onPin: () => Promise<void>, viewingImage: string | undefined) {
+  useEffect(() => {
+    const handleKeys = (event: any) => {
+      if (event.keyCode === 37) {
+        onPrev();
+        event.preventDefault();
+      }
+      else if (event.keyCode === 39) {
+        onNext();
+        event.preventDefault();
+      }
+      else if (event.keyCode === 68) {
+        onDelete();
+        event.preventDefault();
+      }
+      else if (event.keyCode === 32 && selectedImage !== undefined) {
+        setViewingImage(filteredImages[selectedImage].id);
+        event.preventDefault();
+      }
+      else if (event.keyCode === 80 && selectedImage !== undefined) {
+        onPin();
+        event.preventDefault();
+      }
+      else if (event.keyCode === 27) {
+        setViewingImage(undefined);
+      }
+      else {
+        console.error(`Other key: keyCode ${event.keyCode} key ${event.key}`, event.keyCode, event.key);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeys);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeys);
+    };
+  }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages, onPin, setViewingImage]);
+}
+
+function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDImage[], setSelectedImage: (v:number) => any, viewingImage: string | undefined, setViewingImage: (v:string) => any) {
+  const onNext = useCallback(() => {
+    if (selectedImage === undefined)
+      return;
+
+    const index = selectedImage;
+    console.error(`Current index is ${index}`);
+    const nextIndex = (index + 1) % filteredImages.length;
+    console.error(`Next index is ${nextIndex}`);
+    const nextImage = filteredImages[nextIndex].id;
+    console.error(`Next image is ${nextImage}`);
+    setSelectedImage(nextIndex);
+    if (viewingImage !== undefined) {
+      setViewingImage(nextImage);
+    }
+  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage]);
+
+
+  const onPrev = useCallback(() => {
+    if (selectedImage === undefined)
+      return;
+
+    const index = selectedImage;
+    const prevIndex = index === 0 ? filteredImages.length - 1 : index - 1;
+    const prevImage = filteredImages[prevIndex].id;
+    setSelectedImage(prevIndex);
+    if (viewingImage !== undefined) {
+      setViewingImage(prevImage);
+    }
+  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage]);
+  return { onPrev, onNext };
+}
+
+function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], direction: string, showAllTags: boolean, selectedTags: { [key: string]: boolean; }) {
+  const sortedImages = useMemo(() => {
+    let sorted;
+    if (sortBy === 'name') {
+      // eslint-disable-next-line no-nested-ternary
+      sorted = images.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    }
+
+    else {
+
+      // eslint-disable-next-line no-nested-ternary
+      sorted = images.sort((a, b) => a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0);
+    }
+    if (direction === 'down') {
+      sorted = sorted.reverse();
+    }
+
+    return sorted;
+  }, [images, sortBy, direction]);
+
+  const filteredImages = useMemo(() => {
+    if (showAllTags) {
+      return sortedImages;
+    }
+
+    return sortedImages.filter(image => image.tags.filter(tagName => selectedTags[tagName]).length > 0);
+  }, [sortedImages, showAllTags, selectedTags]);
+  return filteredImages;
+}
+
+function useFetchData(setImages: (v: any) => any, setTags: (v: any) => any) {
+  const fetchSequenceCount = useRef(1);
+  const fetchData = useCallback(async () => {
+    const sequence = fetchSequenceCount.current + 1;
+    fetchSequenceCount.current = sequence;
+    const imageTask = await fetch('/api/images');
+    const tagTask = await fetch('/api/tags');
+
+    const images = await imageTask.json();
+    const tags = await tagTask.json();
+
+    if (sequence === fetchSequenceCount.current) {
+      setImages(images);
+      setTags(tags);
+    }
+  }, [setImages, setTags]);
+  return fetchData;
 }
 
