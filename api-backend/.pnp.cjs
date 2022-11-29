@@ -29,10 +29,13 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageLocation": "./",\
           "packageDependencies": [\
             ["@types/express", "npm:4.17.14"],\
+            ["@types/lodash", "npm:4.14.190"],\
             ["@types/sharp", "npm:0.31.0"],\
             ["@types/uuid", "npm:8.3.4"],\
             ["eslint", "npm:8.28.0"],\
             ["express", "npm:4.18.2"],\
+            ["filewatcher", "npm:3.0.1"],\
+            ["lodash", "npm:4.17.21"],\
             ["prettier", "npm:2.8.0"],\
             ["sharp", "npm:0.31.2"],\
             ["ts-node", "virtual:48b4b4e17b725448c017c5f10d5140b2032f686f35e54d7c168799525e0192bc10675dcf0a45e9c70dda2fdcf694df424bd33f1474fcdc9ae8a1b2f86b2ff99f#npm:10.9.1"],\
@@ -282,6 +285,15 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "linkType": "HARD"\
         }]\
       ]],\
+      ["@types/lodash", [\
+        ["npm:4.14.190", {\
+          "packageLocation": "./.yarn/cache/@types-lodash-npm-4.14.190-068271a372-353a55a122.zip/node_modules/@types/lodash/",\
+          "packageDependencies": [\
+            ["@types/lodash", "npm:4.14.190"]\
+          ],\
+          "linkType": "HARD"\
+        }]\
+      ]],\
       ["@types/mime", [\
         ["npm:3.0.1", {\
           "packageLocation": "./.yarn/cache/@types-mime-npm-3.0.1-dec03536dc-4040fac73f.zip/node_modules/@types/mime/",\
@@ -479,10 +491,13 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageDependencies": [\
             ["api-backend", "workspace:."],\
             ["@types/express", "npm:4.17.14"],\
+            ["@types/lodash", "npm:4.14.190"],\
             ["@types/sharp", "npm:0.31.0"],\
             ["@types/uuid", "npm:8.3.4"],\
             ["eslint", "npm:8.28.0"],\
             ["express", "npm:4.18.2"],\
+            ["filewatcher", "npm:3.0.1"],\
+            ["lodash", "npm:4.17.21"],\
             ["prettier", "npm:2.8.0"],\
             ["sharp", "npm:0.31.2"],\
             ["ts-node", "virtual:48b4b4e17b725448c017c5f10d5140b2032f686f35e54d7c168799525e0192bc10675dcf0a45e9c70dda2fdcf694df424bd33f1474fcdc9ae8a1b2f86b2ff99f#npm:10.9.1"],\
@@ -834,6 +849,15 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
             ["path-key", "npm:3.1.1"],\
             ["shebang-command", "npm:2.0.0"],\
             ["which", "npm:2.0.2"]\
+          ],\
+          "linkType": "HARD"\
+        }]\
+      ]],\
+      ["debounce", [\
+        ["npm:1.2.1", {\
+          "packageLocation": "./.yarn/cache/debounce-npm-1.2.1-b09266a260-682a89506d.zip/node_modules/debounce/",\
+          "packageDependencies": [\
+            ["debounce", "npm:1.2.1"]\
           ],\
           "linkType": "HARD"\
         }]\
@@ -1304,6 +1328,16 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageDependencies": [\
             ["file-entry-cache", "npm:6.0.1"],\
             ["flat-cache", "npm:3.0.4"]\
+          ],\
+          "linkType": "HARD"\
+        }]\
+      ]],\
+      ["filewatcher", [\
+        ["npm:3.0.1", {\
+          "packageLocation": "./.yarn/cache/filewatcher-npm-3.0.1-477f7333da-cf6013ef44.zip/node_modules/filewatcher/",\
+          "packageDependencies": [\
+            ["filewatcher", "npm:3.0.1"],\
+            ["debounce", "npm:1.2.1"]\
           ],\
           "linkType": "HARD"\
         }]\
@@ -1845,6 +1879,15 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageDependencies": [\
             ["locate-path", "npm:6.0.0"],\
             ["p-locate", "npm:5.0.0"]\
+          ],\
+          "linkType": "HARD"\
+        }]\
+      ]],\
+      ["lodash", [\
+        ["npm:4.17.21", {\
+          "packageLocation": "./.yarn/cache/lodash-npm-4.17.21-6382451519-eb835a2e51.zip/node_modules/lodash/",\
+          "packageDependencies": [\
+            ["lodash", "npm:4.17.21"]\
           ],\
           "linkType": "HARD"\
         }]\
