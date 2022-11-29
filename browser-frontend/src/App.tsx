@@ -35,7 +35,7 @@ export default function App() {
   const prefixes = useMemo(() => {
     const prefixlist = images.reduce((collection, img) => {
       const parts = img.path.split('/');
-      for(let i = 0; i < parts.length; ++i)
+      for(let i = 0; i < parts.length; i += 1)
       {
         if(collection.length <= i)
         {
@@ -51,16 +51,17 @@ export default function App() {
     
     let prefix = '';
     let splits: string[] = [];
-    for(let i = 0; i < prefixlist.length; ++i)
+    for(let i = 0; i < prefixlist.length; i += 1)
     {
       const items = uniq(prefixlist[i]);
       if(items.length === 1)
       {
-        prefix += `${prefixlist[i][0]  }/`;
+        prefix += `${items[0]}/`;
       }
       else
       {
         splits = items;
+        break;
       }
     }
     return splits.map(s => prefix + s).sort();
