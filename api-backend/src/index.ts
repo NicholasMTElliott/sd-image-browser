@@ -3,6 +3,7 @@ import { Dirent } from 'fs';
 import fs from 'fs/promises';
 import sharp from 'sharp';
 import {v4} from 'uuid';
+import crypto from 'crypto';
 
 interface ISDImage
 {
@@ -65,12 +66,15 @@ const iterateDirectory = async (dirent: Dirent, path: string) => {
             {}
 
             const fullFileName = `${path}/${namePart}.${extension}`;
-            const id = v4();
-            const thumbnailBuffer = await sharp(fullFileName)
-                .resize(128, 128, { fit: 'contain' })
+            
+            const resizedBuffer = sharp(fullFileName)
+                .resize(128, 128, { fit: 'contain' });
+
+            const thumbnailBuffer = await resizedBuffer
                 .jpeg({quality: 60})
                 .toBuffer();
-
+            
+            let id = crypto.createHash('md5').update(await resizedBuffer.png().toBuffer()).digest("hex");
             try
             {
                 // see if there's already an entry for this
@@ -189,6 +193,26 @@ app.delete( "/api/images/:imageId", async (req, res) => {
         res.statusCode = 500;
         res.end();
         console.error(err);
+    }
+});
+
+app.put("/api/images/:imageId/pin", async (req, res) => {
+    try
+    {
+        const idx = imageLookup[req.params.imageId];
+        const image = foundImages[idx];
+        await fs.copyFile(`${image.path}/${image.name}.${image.extension}`, `${sourceDir}/_pinned/${image.name}.${image.id}.${image.extension}`);
+        try{
+            await fs.copyFile(`${image.path}/${image.name}.txt`, `${sourceDir}/_pinned/${image.name}.${image.id}.txt`);
+        }catch(err){}
+    }
+    catch(err)
+    {
+        res.statusCode = 500;
+        res.end();
+        console.error(err);
+        res.statusCode = 204;
+        res.end();
     }
 });
 

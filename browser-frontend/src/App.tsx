@@ -107,6 +107,17 @@ export default function App() {
     .sort(), 
   [tags, filter]);
   
+  const onPin = useCallback(async () => {
+    if(selectedImage === undefined)
+    {
+      return;
+    }
+    const {id} = filteredImages[selectedImage];
+
+    // pre-strip out this item
+    await fetch(`/api/images/${id}/pin`, { method: 'put' });
+  }, [filteredImages, selectedImage]);
+
   const deleteSequenceCount = useRef(1);
   const onDelete = useCallback(async () => {
     if(selectedImage === undefined)
@@ -145,6 +156,10 @@ export default function App() {
       }
       else if(event.keyCode === 32 && selectedImage !== undefined) {
         setViewingImage(filteredImages[selectedImage].id);
+        event.preventDefault();
+      }
+      else if(event.keyCode === 70 && selectedImage !== undefined) {
+        onPin();
         event.preventDefault();
       }
       else if(event.keyCode === 27)
