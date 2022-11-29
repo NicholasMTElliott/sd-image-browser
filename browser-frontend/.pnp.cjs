@@ -30,6 +30,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageDependencies": [\
             ["@types/fs-extra", "npm:9.0.13"],\
             ["@types/live-server", "npm:1.2.1"],\
+            ["@types/lodash", "npm:4.14.190"],\
             ["@types/node", "npm:18.11.9"],\
             ["@types/postcss-preset-env", "npm:7.7.0"],\
             ["@types/react", "npm:18.0.25"],\
@@ -52,6 +53,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
             ["husky", "npm:8.0.2"],\
             ["lint-staged", "npm:13.0.4"],\
             ["live-server", "npm:1.2.2"],\
+            ["lodash", "npm:4.17.21"],\
             ["postcss", "npm:8.4.19"],\
             ["postcss-preset-env", "virtual:27ae39f8b0769cdc2bf32c37dbf7679138f626012cca5678456c6f41a76a78317979a24997f8595c107e07c96663af5435c5f0518bcee72c36b76a15bd709336#npm:7.8.3"],\
             ["prettier", "npm:2.8.0"],\
@@ -681,6 +683,15 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
           "packageLocation": "./.yarn/cache/@types-live-server-npm-1.2.1-ec07548d93-31ab6338e2.zip/node_modules/@types/live-server/",\
           "packageDependencies": [\
             ["@types/live-server", "npm:1.2.1"]\
+          ],\
+          "linkType": "HARD"\
+        }]\
+      ]],\
+      ["@types/lodash", [\
+        ["npm:4.14.190", {\
+          "packageLocation": "./.yarn/cache/@types-lodash-npm-4.14.190-068271a372-353a55a122.zip/node_modules/@types/lodash/",\
+          "packageDependencies": [\
+            ["@types/lodash", "npm:4.14.190"]\
           ],\
           "linkType": "HARD"\
         }]\
@@ -1522,6 +1533,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
             ["browser-frontend", "workspace:."],\
             ["@types/fs-extra", "npm:9.0.13"],\
             ["@types/live-server", "npm:1.2.1"],\
+            ["@types/lodash", "npm:4.14.190"],\
             ["@types/node", "npm:18.11.9"],\
             ["@types/postcss-preset-env", "npm:7.7.0"],\
             ["@types/react", "npm:18.0.25"],\
@@ -1544,6 +1556,7 @@ function $$SETUP_STATE(hydrateRuntimeState, basePath) {
             ["husky", "npm:8.0.2"],\
             ["lint-staged", "npm:13.0.4"],\
             ["live-server", "npm:1.2.2"],\
+            ["lodash", "npm:4.17.21"],\
             ["postcss", "npm:8.4.19"],\
             ["postcss-preset-env", "virtual:27ae39f8b0769cdc2bf32c37dbf7679138f626012cca5678456c6f41a76a78317979a24997f8595c107e07c96663af5435c5f0518bcee72c36b76a15bd709336#npm:7.8.3"],\
             ["prettier", "npm:2.8.0"],\

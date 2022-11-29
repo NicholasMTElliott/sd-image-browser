@@ -1,4 +1,6 @@
+/* eslint-disable no-plusplus */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { uniq } from 'lodash';
 import { ImageThumbnail } from "./ImageThumbnail";
 import { ISDImage } from "./ISDImage";
 import { SelectableTag } from "./SelectableTag";
@@ -10,27 +12,67 @@ export default function App() {
   const [sortBy, setSortBy] = useState<'name'|'mtime'>('name');
   const [direction, setDirection] = useState<'up'|'down'>('up');
   const [tags, setTags] = useState<{[key: string]: number[]}>({});
+  const [status, setStatus] = useState<string>('Unknown');
+
+  const [loading, setLoading] = useState(0);
+  const startLoading = useCallback(() => setLoading((prev) => prev + 1), []);
+  const endLoading = useCallback(() => setLoading((prev) => prev - 1), []);
+  const isLoading = loading > 0;
 
   const [selectedTags, setSelectedTags] = useState<{[key: string]: boolean}>({});
   const showAllTags = Object.keys(selectedTags).filter(tagName => selectedTags[tagName]).length === 0;
   const [selectedImage, setSelectedImage] = useState<number>();
   const [viewingImage, setViewingImage] = useState<string>();
 
-  const fetchData = useFetchData(setImages, setTags);
+  const fetchData = useFetchData(setImages, setTags, setStatus, startLoading, endLoading);
 
   // on mount, fetch
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const filteredImages = useFilteredAndSortedImages(sortBy, images, direction, showAllTags, selectedTags);
-
-  const { onPrev, onNext } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
-
+  const [prefix, setPrefix] = useState('');
+  const prefixes = useMemo(() => {
+    const prefixlist = images.reduce((collection, img) => {
+      const parts = img.path.split('/');
+      for(let i = 0; i < parts.length; ++i)
+      {
+        if(collection.length <= i)
+        {
+          collection.push([parts[i]]);
+        }
+        else
+        {
+          collection[i].push(parts[i]);
+        }
+      }
+      return collection;
+    }, [] as string[][]);
+    
+    let prefix = '';
+    let splits: string[] = [];
+    for(let i = 0; i < prefixlist.length; ++i)
+    {
+      const items = uniq(prefixlist[i]);
+      if(items.length === 1)
+      {
+        prefix += `${prefixlist[i][0]  }/`;
+      }
+      else
+      {
+        splits = items;
+      }
+    }
+    return splits.map(s => prefix + s).sort();
+  }, [images]);
+  const filteredImages = useFilteredAndSortedImages(sortBy, images, direction, showAllTags, selectedTags, prefix);
   const filteredTags = useMemo(() => Object.keys(tags)
     .filter(tagName => filter.length === 0 || tagName.indexOf(filter) >= 0)
     .sort(), 
   [tags, filter]);
+
+  const { onPrev, onNext } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
+
   
   const onPin = useCallback(async () => {
     if(selectedImage === undefined)
@@ -116,7 +158,9 @@ export default function App() {
 
   return <div id='browser-page'>
     <div id='tabs'>
-      [ Text Prompts ] [ Image to Image ] [ Outputs ]
+      {
+        prefixes.map(p => <button type="button" onClick={() => setPrefix(p)}>{p}</button>)        
+      }
     </div>
     <div id='manager'>
       <div id='taglist'>{
@@ -127,6 +171,7 @@ export default function App() {
     </div>
     <div id='browser'>
       <div id='toolbar'>
+        <div>{isLoading ? 'Refreshing...' : status}</div>
         <button type="button" onClick={fetchData}>Refresh</button>
         <button type="button" onClick={sortByName}>Name {sortBy === 'name' && direction}</button>
         <button type="button" onClick={sortByDate}>Date {sortBy === 'mtime' && direction}</button>
@@ -157,7 +202,7 @@ export default function App() {
   </div>;
 }
 
-function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onDelete: () => Promise<void>, selectedImage: number | undefined, setViewingImage, filteredImages: ISDImage[], onPin: () => Promise<void>, viewingImage: string | undefined) {
+function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onDelete: () => Promise<void>, selectedImage: number | undefined, setViewingImage: (v:string | undefined) => any, filteredImages: ISDImage[], onPin: () => Promise<void>, viewingImage: string | undefined) {
   useEffect(() => {
     const handleKeys = (event: any) => {
       if (event.keyCode === 37) {
@@ -229,52 +274,57 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
   return { onPrev, onNext };
 }
 
-function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], direction: string, showAllTags: boolean, selectedTags: { [key: string]: boolean; }) {
+function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], direction: string, showAllTags: boolean, selectedTags: { [key: string]: boolean; }, prefix: string) {
+  const filteredImages = useMemo(() => images.filter(image => (showAllTags || image.tags.filter(tagName => selectedTags[tagName]).length > 0) && image.path.indexOf(prefix) === 0), [showAllTags, images, prefix, selectedTags]);
+  
   const sortedImages = useMemo(() => {
     let sorted;
     if (sortBy === 'name') {
       // eslint-disable-next-line no-nested-ternary
-      sorted = images.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+      sorted = filteredImages.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     }
 
     else {
 
       // eslint-disable-next-line no-nested-ternary
-      sorted = images.sort((a, b) => a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0);
+      sorted = filteredImages.sort((a, b) => a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0);
     }
     if (direction === 'down') {
       sorted = sorted.reverse();
     }
 
     return sorted;
-  }, [images, sortBy, direction]);
-
-  const filteredImages = useMemo(() => {
-    if (showAllTags) {
-      return sortedImages;
-    }
-
-    return sortedImages.filter(image => image.tags.filter(tagName => selectedTags[tagName]).length > 0);
-  }, [sortedImages, showAllTags, selectedTags]);
-  return filteredImages;
+  }, [filteredImages, sortBy, direction]);
+  return sortedImages;
 }
 
-function useFetchData(setImages: (v: any) => any, setTags: (v: any) => any) {
+function useFetchData(setImages: (v: any) => any, setTags: (v: any) => any, setStatus: (v:string) => any, startLoading: () => any, endLoading: () => any) {
   const fetchSequenceCount = useRef(1);
   const fetchData = useCallback(async () => {
-    const sequence = fetchSequenceCount.current + 1;
-    fetchSequenceCount.current = sequence;
-    const imageTask = await fetch('/api/images');
-    const tagTask = await fetch('/api/tags');
+    startLoading();
+    try
+    {
+      const sequence = fetchSequenceCount.current + 1;
+      fetchSequenceCount.current = sequence;
+      const imageTask = await fetch('/api/images');
+      const tagTask = await fetch('/api/tags');
+      const statusTask = await fetch('/api/status');
 
-    const images = await imageTask.json();
-    const tags = await tagTask.json();
+      const images = await imageTask.json();
+      const tags = await tagTask.json();
+      const status = await statusTask.json();
 
-    if (sequence === fetchSequenceCount.current) {
-      setImages(images);
-      setTags(tags);
+      if (sequence === fetchSequenceCount.current) {
+        setImages(images);
+        setTags(tags);
+        setStatus(status)
+      }
     }
-  }, [setImages, setTags]);
+    finally
+    {
+      endLoading();
+    }
+  }, [endLoading, setImages, setStatus, setTags, startLoading]);
   return fetchData;
 }
 

@@ -399,6 +399,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/lodash@npm:^4.14.190":
+  version: 4.14.190
+  resolution: "@types/lodash@npm:4.14.190"
+  checksum: 353a55a1222a57224ead8bd3379fabb2e3e3f6685f599c48b1b66f099d8e9e015e6c6352c6e2275954004c3bb510377804c63117233c6f187700b6ab78adfa02
+  languageName: node
+  linkType: hard
+
 "@types/node@npm:*, @types/node@npm:^18.11.9":
   version: 18.11.9
   resolution: "@types/node@npm:18.11.9"
@@ -1051,6 +1058,7 @@ __metadata:
   dependencies:
     "@types/fs-extra": ^9.0.13
     "@types/live-server": ^1.2.1
+    "@types/lodash": ^4.14.190
     "@types/node": ^18.11.9
     "@types/postcss-preset-env": ^7.7.0
     "@types/react": ^18.0.25
@@ -1073,6 +1081,7 @@ __metadata:
     husky: ^8.0.1
     lint-staged: ^13.0.3
     live-server: ^1.2.2
+    lodash: ^4.17.21
     postcss: ^8.4.18
     postcss-preset-env: ^7.8.2
     prettier: ^2.7.1
