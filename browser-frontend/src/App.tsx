@@ -108,6 +108,10 @@ export default function App() {
     }
   }, [fetchData, filteredImages, images, selectedImage]);
 
+  const onRescan = useCallback(() => {
+    fetch('/api/images', { method: 'post' });
+  }, []);
+
   useKeyboardHandlers(onPrev, onNext, onDelete, selectedImage, setViewingImage, filteredImages, onPin, viewingImage);
 
   const onSelect = useCallback((imageId: string) => {
@@ -177,6 +181,7 @@ export default function App() {
         <button type="button" onClick={sortByName}>Name {sortBy === 'name' && direction}</button>
         <button type="button" onClick={sortByDate}>Date {sortBy === 'mtime' && direction}</button>
         <button type='button' onClick={onDelete}>Delete</button>
+        <button type="button" onClick={onRescan}>Rescan</button>
       </div>
       {
         filteredImages.map((image, idx) => (

@@ -39,6 +39,12 @@ app.get( "/api/images", ( req, res ) => {
     res.send( JSON.stringify(foundImages) );
 } );
 
+app.post( "/api/images", ( req, res ) => {
+    inventoryImages();
+    res.statusCode = 204;
+    res.end();
+} );
+
 app.get( "/api/tags", ( req, res ) => {
     res.header('content-type', 'application/json');
     res.send( JSON.stringify(imageTagLookup) );
@@ -69,6 +75,7 @@ app.delete( "/api/images/:imageId", async (req, res) => {
         const idx = imageLookup[req.params.imageId];
         const image = foundImages[idx];
 
+        // TODO delete should remove every extension matching the file part!
         console.error(`Will delete ${req.params.imageId} at ${image.path}/${image.name}`);
         await fs.rm(`${image.path}/${image.name}.${image.extension}`);
         try {
@@ -78,10 +85,11 @@ app.delete( "/api/images/:imageId", async (req, res) => {
         {} 
         
         foundImages.splice(idx, 1);
-        // reindex
-        reindex();
         res.statusCode = 204;
         res.end();
+
+        // reindex
+        reindex();
     }
     catch(err)
     {
