@@ -21,25 +21,25 @@ export async function processFile(name: string, path: string) {
             }
             catch { }
 
-            const fullFileName = `${path}/${namePart}.${extension}`;
+            // see if there's already an entry for this
+            const existingEntry = foundImages.find(i => i.path === path && i.name === namePart);
+            if (existingEntry && extension === 'png') {
+                // we replace the existing entry
+                existingEntry.extension = extension;
+                existingEntry.tags = tags;
+            }
+            else if (!existingEntry) {
+                const fullFileName = `${path}/${namePart}.${extension}`;
 
-            const resizedBuffer = sharp(fullFileName)
-                .resize(128, 128, { fit: 'contain' });
+                const resizedBuffer = sharp(fullFileName)
+                    .resize(128, 128, { fit: 'contain' });
 
-            const thumbnailBuffer = await resizedBuffer
-                .jpeg({ quality: 60 })
-                .toBuffer();
+                const thumbnailBuffer = await resizedBuffer
+                    .jpeg({ quality: 60 })
+                    .toBuffer();
 
-            let id = crypto.createHash('md5').update(await resizedBuffer.png().toBuffer()).digest("hex");
-            try {
-                // see if there's already an entry for this
-                const existingEntry = foundImages.find(i => i.path === path && i.name === namePart);
-                if (existingEntry && extension === 'png') {
-                    // we replace the existing entry
-                    existingEntry.extension = extension;
-                    existingEntry.tags = tags;
-                }
-                else if (!existingEntry) {
+                let id = crypto.createHash('md5').update(await resizedBuffer.png().toBuffer()).digest("hex");
+                try {
                     const imageIndex = foundImages.length;
                     const thumbnailImage = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
                     const stat = await fs.stat(fullFileName);
@@ -61,8 +61,8 @@ export async function processFile(name: string, path: string) {
                     }
                     imageLookup[foundImages[imageIndex].id] = imageIndex;
                 }
+                catch (err) { }
             }
-            catch (err) { }
         }
     }
     catch (err) {

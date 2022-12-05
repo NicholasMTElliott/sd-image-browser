@@ -57,9 +57,10 @@ app.get( "/api/images/:imageId", async (req, res) => {
         const image = foundImages[idx];
         console.log(`Mapped ${req.params.imageId} to ${idx} which worked out to ${image.id} ${image.fullFileName}`);
         const buffer = await sharp(image.fullFileName)
-            .png()
+            .jpeg()
             .toBuffer();
         res.header('content-type', 'image/png');
+        res.set('Cache-control', 'public, max-age=86400')
         res.send(buffer);
     }
     catch(err)
