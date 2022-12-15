@@ -110,11 +110,22 @@ code {
   }
 }
 
-#close-view-container-button
+
+#view-tools
 {
   position: absolute;
   top: 0;
   right: 0;
+  display: flex;
+  flex-direction: row;
+
+  >button {
+    padding: 8px;
+  }
+}
+
+#view-taglist {
+  max-width: 25%;
 }
 
 #view-image

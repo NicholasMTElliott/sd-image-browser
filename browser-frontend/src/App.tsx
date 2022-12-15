@@ -194,7 +194,13 @@ export default function App() {
       }
     </div>
     <div id='view-container' className={viewingImage && 'visible'}>
-      <button id='close-view-container-button' type='button' onClick={() => setViewingImage(undefined)}>X</button>
+      <div id='view-tools'>
+        <button type='button' onClick={onPrev}>{'<'}</button>
+        <button type='button' onClick={onNext}>{'>'}</button>
+        <button type='button' onClick={onPin}>+</button>
+        <button type='button' onClick={onDelete}>-</button>
+        <button id='close-view-container-button' type='button' onClick={() => setViewingImage(undefined)}>X</button>
+      </div>
       <div id='view-taglist'>
         <div>{viewingImageRef?.name}</div>
         <div>{viewingImageRef?.path}</div>
