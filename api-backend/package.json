@@ -1,6 +1,6 @@
 {
   "name": "api-backend",
-  "packageManager": "yarn@3.3.0",
+  "packageManager": "yarn@3.6.4",
   "main": "src/index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
@@ -23,5 +23,9 @@
     "lodash": "^4.17.21",
     "sharp": "^0.31.2",
     "uuid": "^9.0.0"
+  },
+  "volta": {
+    "node": "18.18.1",
+    "yarn": "3.6.4"
   }
 }

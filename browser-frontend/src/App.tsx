@@ -1,6 +1,6 @@
 /* eslint-disable no-plusplus */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { uniq } from 'lodash';
+import { shuffle, sortBy, uniq } from 'lodash';
 import { ImageThumbnail } from "./ImageThumbnail";
 import { ISDImage } from "./ISDImage";
 import { SelectableTag } from "./SelectableTag";
@@ -72,7 +72,7 @@ export default function App() {
     .sort(), 
   [tags, filter]);
 
-  const { onPrev, onNext } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
+  const { onPrev, onNext, onRandom } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
 
   
   const onPin = useCallback(async () => {
@@ -84,7 +84,8 @@ export default function App() {
 
     // pre-strip out this item
     await fetch(`/api/images/${id}/pin`, { method: 'put' });
-  }, [filteredImages, selectedImage]);
+    onNext();
+  }, [filteredImages, selectedImage, onNext]);
 
   const deleteSequenceCount = useRef(1);
   const onDelete = useCallback(async () => {
@@ -106,13 +107,14 @@ export default function App() {
     {
       fetchData();
     }
+    onNext();
   }, [fetchData, filteredImages, images, selectedImage]);
 
   const onRescan = useCallback(() => {
     fetch('/api/images', { method: 'post' });
   }, []);
 
-  useKeyboardHandlers(onPrev, onNext, onDelete, selectedImage, setViewingImage, filteredImages, onPin, viewingImage);
+  useKeyboardHandlers(onPrev, onNext, onRandom, onDelete, selectedImage, setViewingImage, filteredImages, onPin, viewingImage);
 
   const onSelect = useCallback((imageId: string) => {
     const imageIndex = filteredImages.findIndex(img => img.id === imageId);
@@ -160,19 +162,21 @@ export default function App() {
     }
   }, [direction, sortBy]);
 
+  const onCopy = useCallback(() => {
+    if(!viewingImageRef)
+    {
+      return;
+    }
+
+    navigator.clipboard.writeText(viewingImageRef.metadata);
+    alert(viewingImageRef.metadata);
+  }, [viewingImageRef]);
 
   return <div id='browser-page'>
     <div id='tabs'>
       {
         prefixes.map(p => <button type="button" onClick={() => setPrefix(p)}>{p}</button>)        
       }
-    </div>
-    <div id='manager'>
-      <div id='taglist'>{
-        filteredTags.map(tagName => <SelectableTag key={tagName} tagName={tagName} selectedTags={selectedTags} setSelectedTags={setSelectedTags} />)
-      }
-      </div>
-      <input type='text' value={filter} onChange={(evt) => setFilter(evt.currentTarget.value)}/>
     </div>
     <div id='browser'>
       <div id='toolbar'>
@@ -195,30 +199,29 @@ export default function App() {
     </div>
     <div id='view-container' className={viewingImage && 'visible'}>
       <div id='view-tools'>
+        <button type='button'>{viewingImageRef?.size} KB</button>
+        <button type='button' title={viewingImageRef?.metadata} onClick={onCopy}>c</button>
         <button type='button' onClick={onPrev}>{'<'}</button>
+        <button type='button' onClick={onRandom}>{'!'}</button>
         <button type='button' onClick={onNext}>{'>'}</button>
         <button type='button' onClick={onPin}>+</button>
         <button type='button' onClick={onDelete}>-</button>
         <button id='close-view-container-button' type='button' onClick={() => setViewingImage(undefined)}>X</button>
       </div>
-      <div id='view-taglist'>
-        <div>{viewingImageRef?.name}</div>
-        <div>{viewingImageRef?.path}</div>
-        <div>{viewingImageRef ? new Date(viewingImageRef.modified).toLocaleString() : ''}</div>
-        {
-          viewingImageRef?.tags.map(tag => <div key={tag} className="view-taglist-tag">{tag}</div>)
-        }
-      </div>
-      <div id='view-image' style={{backgroundImage: `url(/api/images/${viewingImage})`}} title={viewingImageRef?.name}/>
+      <img id='view-image' src={`/api/images/${viewingImage}`} style={{ objectFit: 'contain', width: '100%', height: '100%'} } title={viewingImageRef?.name}/>
     </div>
   </div>;
 }
 
-function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onDelete: () => Promise<void>, selectedImage: number | undefined, setViewingImage: (v:string | undefined) => any, filteredImages: ISDImage[], onPin: () => Promise<void>, viewingImage: string | undefined) {
+function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onRandom: () => void, onDelete: () => Promise<void>, selectedImage: number | undefined, setViewingImage: (v:string | undefined) => any, filteredImages: ISDImage[], onPin: () => Promise<void>, viewingImage: string | undefined) {
   useEffect(() => {
     const handleKeys = (event: any) => {
       if (event.keyCode === 37) {
         onPrev();
+        event.preventDefault();
+      }
+      else if (event.keyCode === 39) {
+        onNext();
         event.preventDefault();
       }
       else if (event.keyCode === 39) {
@@ -239,6 +242,10 @@ function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onDelete: (
       }
       else if (event.keyCode === 27) {
         setViewingImage(undefined);
+      }
+      else if (event.keyCode===82 ) {
+        onRandom();
+        event.preventDefault();
       }
       else {
         console.error(`Other key: keyCode ${event.keyCode} key ${event.key}`, event.keyCode, event.key);
@@ -283,7 +290,22 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
       setViewingImage(prevImage);
     }
   }, [selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage]);
-  return { onPrev, onNext };
+
+
+  const randomOrderList = useMemo(() => {
+    return shuffle(filteredImages.map(i => i.id));
+  }, [filteredImages])
+
+  const onRandom = useCallback(() => {
+    const currentIndex = viewingImage ? randomOrderList.indexOf(viewingImage) : -1;
+    const nextIndex = (currentIndex+1) % randomOrderList.length;
+    const nextImage = randomOrderList[nextIndex];
+    const nextRealIndex = filteredImages.findIndex(i => i.id === nextImage);
+    setSelectedImage(nextRealIndex);
+    setViewingImage(nextImage);
+  }, [randomOrderList, filteredImages.length, setSelectedImage, setViewingImage, viewingImage]);
+
+  return { onPrev, onNext, onRandom };
 }
 
 function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], direction: string, showAllTags: boolean, selectedTags: { [key: string]: boolean; }, prefix: string) {

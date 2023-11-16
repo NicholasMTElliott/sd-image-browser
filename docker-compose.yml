@@ -14,5 +14,9 @@ services:
     build:
       context: api-backend
       dockerfile: Dockerfile
+    environment:
+      IMAGES_ROOT_DIR: /images
     ports:
       - 3333:3333
+    volumes:
+      - ../stable-diffusion-webui-automatic1111/outputs:/images

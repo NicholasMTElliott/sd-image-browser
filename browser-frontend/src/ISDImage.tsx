@@ -7,4 +7,6 @@ export interface ISDImage {
   tags: string[];
   preview: string;
   modified: string;
+  size: number;
+  metadata: string;
 }

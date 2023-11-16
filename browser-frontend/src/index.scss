@@ -19,7 +19,7 @@ code {
   display: grid;
   grid-template-areas: 
     "tabs tabs" 
-    "manager browser";
+    "browser browser";
   grid-template-rows: 80px auto;
   grid-template-columns: 160px auto;
   width: 100%;
@@ -100,7 +100,7 @@ code {
   align-items: stretch;
   justify-content: stretch;
   display: none;
-  background-color: white;
+  background-color: black;
   border-radius: 5px;
   border: 1px solid black;
   z-index: 20;
@@ -122,10 +122,6 @@ code {
   >button {
     padding: 8px;
   }
-}
-
-#view-taglist {
-  max-width: 25%;
 }
 
 #view-image
