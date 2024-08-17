@@ -17,6 +17,6 @@ export function ImageThumbnail(props: {
     onClick={onClick}
     className={`image-container ${isSelected && 'selected'}`}
     key={image.id}>
-    <img className='image-preview' alt={image.name} src={image.preview} />
+    <img className='image-preview' alt={image.name} src={`/api/thumbnails/${image.id}`} loading="lazy" />
   </button>;
 }

@@ -1,17 +1,13 @@
 /* eslint-disable no-plusplus */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { shuffle, sortBy, uniq } from 'lodash';
+import { shuffle, uniq } from 'lodash';
 import { ImageThumbnail } from "./ImageThumbnail";
 import { ISDImage } from "./ISDImage";
-import { SelectableTag } from "./SelectableTag";
-
 
 export default function App() {
   const [images, setImages] = useState<ISDImage[]>([]);
-  const [filter, setFilter] = useState('');
   const [sortBy, setSortBy] = useState<'name'|'mtime'>('name');
   const [direction, setDirection] = useState<'up'|'down'>('up');
-  const [tags, setTags] = useState<{[key: string]: number[]}>({});
   const [status, setStatus] = useState<string>('Unknown');
 
   const [loading, setLoading] = useState(0);
@@ -19,12 +15,10 @@ export default function App() {
   const endLoading = useCallback(() => setLoading((prev) => prev - 1), []);
   const isLoading = loading > 0;
 
-  const [selectedTags, setSelectedTags] = useState<{[key: string]: boolean}>({});
-  const showAllTags = Object.keys(selectedTags).filter(tagName => selectedTags[tagName]).length === 0;
   const [selectedImage, setSelectedImage] = useState<number>();
   const [viewingImage, setViewingImage] = useState<string>();
 
-  const fetchData = useFetchData(setImages, setTags, setStatus, startLoading, endLoading);
+  const fetchData = useFetchData(setImages, setStatus, startLoading, endLoading);
 
   // on mount, fetch
   useEffect(() => {
@@ -66,11 +60,7 @@ export default function App() {
     }
     return splits.map(s => prefix + s).sort();
   }, [images]);
-  const filteredImages = useFilteredAndSortedImages(sortBy, images, direction, showAllTags, selectedTags, prefix);
-  const filteredTags = useMemo(() => Object.keys(tags)
-    .filter(tagName => filter.length === 0 || tagName.indexOf(filter) >= 0)
-    .sort(), 
-  [tags, filter]);
+  const filteredImages = useFilteredAndSortedImages(sortBy, images, direction, prefix);
 
   const { onPrev, onNext, onRandom } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
 
@@ -83,9 +73,12 @@ export default function App() {
     const {id} = filteredImages[selectedImage];
 
     // pre-strip out this item
-    await fetch(`/api/images/${id}/pin`, { method: 'put' });
-    onNext();
-  }, [filteredImages, selectedImage, onNext]);
+    const response = await fetch(`/api/images/${id}/pin`, { method: 'put' });
+    const image = await response.json();
+    setImages((imgs) => imgs.map(i => i.id === id ? image : i));
+    setViewingImage(undefined);
+    setTimeout( () => setViewingImage(filteredImages[selectedImage+1]?.id), 1);
+  }, [filteredImages, selectedImage, setImages]);
 
   const deleteSequenceCount = useRef(1);
   const onDelete = useCallback(async () => {
@@ -102,17 +95,19 @@ export default function App() {
     // pre-strip out this item
     setViewingImage(undefined);
     setImages(images.filter(img => img.id !== id));
+    // Update filtered images or we will show something different than what is selected!
+    setTimeout( () => setViewingImage(filteredImages[selectedImage+1]?.id), 1);
     await fetch(`/api/images/${id}`, { method: 'delete' });
-    if(deleteSequenceCount.current === sequence)
-    {
-      fetchData();
-    }
-    onNext();
-  }, [fetchData, filteredImages, images, selectedImage]);
+  }, [filteredImages, images, selectedImage]);
 
   const onRescan = useCallback(() => {
     fetch('/api/images', { method: 'post' });
   }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => onRescan(), 1000*60*3);
+    return () => clearInterval(id);
+  }, [onRescan]);
 
   useKeyboardHandlers(onPrev, onNext, onRandom, onDelete, selectedImage, setViewingImage, filteredImages, onPin, viewingImage);
 
@@ -168,7 +163,8 @@ export default function App() {
       return;
     }
 
-    navigator.clipboard.writeText(viewingImageRef.metadata);
+    navigator.clipboard?.writeText(viewingImageRef.metadata);
+    console.log(viewingImageRef.metadata);
     alert(viewingImageRef.metadata);
   }, [viewingImageRef]);
 
@@ -181,6 +177,7 @@ export default function App() {
     <div id='browser'>
       <div id='toolbar'>
         <div>{isLoading ? 'Refreshing...' : status}</div>
+        <button type='button' onClick={onRandom}>Random</button>
         <button type="button" onClick={fetchData}>Refresh</button>
         <button type="button" onClick={sortByName}>Name {sortBy === 'name' && direction}</button>
         <button type="button" onClick={sortByDate}>Date {sortBy === 'mtime' && direction}</button>
@@ -198,17 +195,24 @@ export default function App() {
       }
     </div>
     <div id='view-container' className={viewingImage && 'visible'}>
-      <div id='view-tools'>
-        <button type='button'>{viewingImageRef?.size} KB</button>
+      <div id='view-tools-top'>
         <button type='button' title={viewingImageRef?.metadata} onClick={onCopy}>c</button>
-        <button type='button' onClick={onPrev}>{'<'}</button>
-        <button type='button' onClick={onRandom}>{'!'}</button>
-        <button type='button' onClick={onNext}>{'>'}</button>
-        <button type='button' onClick={onPin}>+</button>
-        <button type='button' onClick={onDelete}>-</button>
-        <button id='close-view-container-button' type='button' onClick={() => setViewingImage(undefined)}>X</button>
       </div>
-      <img id='view-image' src={`/api/images/${viewingImage}`} style={{ objectFit: 'contain', width: '100%', height: '100%'} } title={viewingImageRef?.name}/>
+      <img 
+        id='view-image' 
+        src={viewingImage ? `/api/images/${viewingImage}` : 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAI=;'} 
+        style={{ 
+          backgroundImage: `url("/api/thumbnails/${viewingImageRef?.id}")`
+        } } 
+        title={viewingImageRef?.name}/>
+        <div id='view-tools-bottom'>
+          <button type='button' onClick={onDelete}>-</button>
+          <button type='button' onClick={onPrev}>{'<'}</button>
+          <button type='button' onClick={onRandom}>{'!'}</button>
+          <button type='button' onClick={onNext}>{'>'}</button>
+          <button type='button' onClick={onPin}>+</button>
+          <button id='close-view-container-button' type='button' onClick={() => setViewingImage(undefined)}>X</button>
+        </div>
     </div>
   </div>;
 }
@@ -260,7 +264,16 @@ function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onRandom: (
   }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages, onPin, setViewingImage]);
 }
 
-function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDImage[], setSelectedImage: (v:number) => any, viewingImage: string | undefined, setViewingImage: (v:string) => any) {
+function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDImage[], setSelectedImage: (v:number) => any, viewingImage: string | undefined, setViewingImage: (v:string|undefined) => any) {
+  const updateViewingImage = useCallback((id: string) => {
+    setViewingImage(undefined);
+    
+    if(id != undefined)
+    {
+      setTimeout( () => setViewingImage(id), 1);
+    }
+  }, [setViewingImage]);
+
   const onNext = useCallback(() => {
     if (selectedImage === undefined)
       return;
@@ -272,10 +285,8 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
     const nextImage = filteredImages[nextIndex].id;
     console.error(`Next image is ${nextImage}`);
     setSelectedImage(nextIndex);
-    if (viewingImage !== undefined) {
-      setViewingImage(nextImage);
-    }
-  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage]);
+    updateViewingImage(nextImage);
+  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, updateViewingImage]);
 
 
   const onPrev = useCallback(() => {
@@ -286,10 +297,8 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
     const prevIndex = index === 0 ? filteredImages.length - 1 : index - 1;
     const prevImage = filteredImages[prevIndex].id;
     setSelectedImage(prevIndex);
-    if (viewingImage !== undefined) {
-      setViewingImage(prevImage);
-    }
-  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage]);
+    updateViewingImage(prevImage);
+  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, updateViewingImage]);
 
 
   const randomOrderList = useMemo(() => {
@@ -302,14 +311,14 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
     const nextImage = randomOrderList[nextIndex];
     const nextRealIndex = filteredImages.findIndex(i => i.id === nextImage);
     setSelectedImage(nextRealIndex);
-    setViewingImage(nextImage);
-  }, [randomOrderList, filteredImages.length, setSelectedImage, setViewingImage, viewingImage]);
+    updateViewingImage(nextImage);
+  }, [randomOrderList, filteredImages.length, setSelectedImage, updateViewingImage, viewingImage]);
 
   return { onPrev, onNext, onRandom };
 }
 
-function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], direction: string, showAllTags: boolean, selectedTags: { [key: string]: boolean; }, prefix: string) {
-  const filteredImages = useMemo(() => images.filter(image => (showAllTags || image.tags.filter(tagName => selectedTags[tagName]).length > 0) && image.path.indexOf(prefix) === 0), [showAllTags, images, prefix, selectedTags]);
+function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], direction: string, prefix: string) {
+  const filteredImages = useMemo(() => images.filter(image => (image.path.indexOf(prefix) === 0)), [images, prefix]);
   
   const sortedImages = useMemo(() => {
     let sorted;
@@ -332,7 +341,7 @@ function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], directio
   return sortedImages;
 }
 
-function useFetchData(setImages: (v: any) => any, setTags: (v: any) => any, setStatus: (v:string) => any, startLoading: () => any, endLoading: () => any) {
+function useFetchData(setImages: (v: any) => any, setStatus: (v:string) => any, startLoading: () => any, endLoading: () => any) {
   const fetchSequenceCount = useRef(1);
   const fetchData = useCallback(async () => {
     startLoading();
@@ -341,16 +350,13 @@ function useFetchData(setImages: (v: any) => any, setTags: (v: any) => any, setS
       const sequence = fetchSequenceCount.current + 1;
       fetchSequenceCount.current = sequence;
       const imageTask = await fetch('/api/images');
-      const tagTask = await fetch('/api/tags');
       const statusTask = await fetch('/api/status');
 
       const images = await imageTask.json();
-      const tags = await tagTask.json();
       const status = await statusTask.json();
 
       if (sequence === fetchSequenceCount.current) {
         setImages(images);
-        setTags(tags);
         setStatus(status)
       }
     }
@@ -358,7 +364,7 @@ function useFetchData(setImages: (v: any) => any, setTags: (v: any) => any, setS
     {
       endLoading();
     }
-  }, [endLoading, setImages, setStatus, setTags, startLoading]);
+  }, [endLoading, setImages, setStatus, startLoading]);
   return fetchData;
 }
 

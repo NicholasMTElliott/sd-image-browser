@@ -3,3 +3,4 @@ dist
 .editorconfig
 .gitignore
 Dockerfile
+!.yarn/*

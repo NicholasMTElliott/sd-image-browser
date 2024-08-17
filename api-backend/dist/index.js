@@ -19,148 +19,166 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.supportedImages = exports.sourceDir = exports.status = exports.imageLookup = exports.imageTagLookup = void 0;
 const express_1 = __importDefault(require("express"));
 const promises_1 = __importDefault(require("fs/promises"));
+const fs_1 = require("fs");
 const sharp_1 = __importDefault(require("sharp"));
-const uuid_1 = require("uuid");
-const foundImages = [];
-const imageTagLookup = {
+const inventoryImages_1 = require("./inventoryImages");
+exports.imageTagLookup = {
     '': []
 };
-const imageLookup = {};
-let status = 'none';
+exports.imageLookup = {};
+exports.status = { current: 'none' };
 const app = (0, express_1.default)();
 const port = process.env.PORT || 3000; // default port to listen
-const sourceDir = process.env.IMAGES_ROOT_DIR || './samples';
-const supportedImages = ["png", "jpg", "webp", "jpeg", "gif"];
-const iterateDirectory = (dirent, path) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, e_1, _b, _c;
-    var _d;
-    if (dirent.isDirectory()) {
-        console.log(`Scanning ${dirent.name} and ${path}`);
-        console.log(dirent.name);
-        if (dirent.name[0] != '.') {
-            const subpath = path + '/' + dirent.name;
-            const dir = yield promises_1.default.opendir(subpath);
-            try {
-                for (var _e = true, dir_1 = __asyncValues(dir), dir_1_1; dir_1_1 = yield dir_1.next(), _a = dir_1_1.done, !_a;) {
-                    _c = dir_1_1.value;
-                    _e = false;
-                    try {
-                        const subdir = _c;
-                        iterateDirectory(subdir, subpath);
-                    }
-                    finally {
-                        _e = true;
-                    }
-                }
-            }
-            catch (e_1_1) { e_1 = { error: e_1_1 }; }
-            finally {
-                try {
-                    if (!_e && !_a && (_b = dir_1.return)) yield _b.call(dir_1);
-                }
-                finally { if (e_1) throw e_1.error; }
-            }
-        }
-    }
-    else if (dirent.isFile()) {
-        const fileParts = dirent.name.split('.');
-        const extension = fileParts[fileParts.length - 1].toLowerCase();
-        const namePart = fileParts.slice(0, fileParts.length - 1).join('.');
-        if (supportedImages.indexOf(extension) >= 0) {
-            console.log(`File ${namePart} is a ${extension} at ${path}`);
-            // process this image!
-            // try and read any associated attribute information
-            let tags = [];
-            try {
-                const tagsFile = yield promises_1.default.readFile(`${path}/${namePart}.txt`);
-                const fileContents = tagsFile.toString('utf-8');
-                tags = fileContents.split('\n')[0].split(/[,|]/).map(tag => tag.toLowerCase().trim());
-            }
-            catch (_f) { }
-            const fullFileName = `${path}/${namePart}.${extension}`;
-            const id = (0, uuid_1.v4)();
-            const thumbnailBuffer = yield (0, sharp_1.default)(fullFileName)
-                .resize(128, 128, { fit: 'contain' })
-                .jpeg({ quality: 60 })
-                .toBuffer();
-            const imageIndex = foundImages.length;
-            const thumbnailImage = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
-            foundImages.push({
-                id,
-                fullFileName,
-                path,
-                name: namePart,
-                extension,
-                tags,
-                preview: thumbnailImage
-            });
-            for (const tag of tags) {
-                imageTagLookup[tag] = [...((_d = imageTagLookup[tag]) !== null && _d !== void 0 ? _d : []), imageIndex];
-            }
-            if (tags.length == 0) {
-                imageTagLookup[''].push(imageIndex);
-            }
-            imageLookup[id] = imageIndex;
-        }
-    }
+exports.sourceDir = process.env.IMAGES_ROOT_DIR || './samples';
+exports.supportedImages = ["png", "jpg", "webp", "jpeg", "gif"];
+app.get("/api/status", (req, res) => {
+    res.header('content-type', 'application/json');
+    res.send(JSON.stringify(exports.status.current));
 });
-const inventoryImages = () => __awaiter(void 0, void 0, void 0, function* () {
-    var _g, e_2, _h, _j;
-    status = 'processing';
+app.get("/api/images", (req, res) => {
+    res.header('content-type', 'application/json');
+    res.send(JSON.stringify(Object.values(exports.imageLookup)));
+});
+app.post("/api/images", (req, res) => {
+    (0, inventoryImages_1.inventoryImages)();
+    res.statusCode = 204;
+    res.end();
+});
+app.get("/api/tags", (req, res) => {
+    res.header('content-type', 'application/json');
+    res.send(JSON.stringify(exports.imageTagLookup));
+});
+app.get("/api/images/:imageId", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const dir = yield promises_1.default.opendir(sourceDir);
+        const image = exports.imageLookup[req.params.imageId];
+        console.log(`Mapping ${req.params.imageId}`);
+        console.log(`Mapped ${req.params.imageId} to ${image.id} ${image.fullFileName}`);
+        res.header('Cache-control', 'public, max-age=86400');
+        yield promises_1.default.access(image.fullFileName, promises_1.default.constants.F_OK);
+        if (image.extension === 'gif') {
+            res.header('content-type', 'image/gif');
+            (0, fs_1.createReadStream)(image.fullFileName).pipe(res);
+        }
+        else if (image.extension === 'webp') {
+            res.header('content-type', 'image/webp');
+            (0, fs_1.createReadStream)(image.fullFileName).pipe(res);
+        }
+        else {
+            const imageSharp = yield (0, sharp_1.default)(image.fullFileName)
+                .webp({ quality: 80 });
+            const buffer = yield imageSharp.toBuffer();
+            res.header('content-type', 'image/webp');
+            res.send(buffer);
+        }
+    }
+    catch (err) {
+        console.error(err);
+        res.statusCode = 500;
+        res.end();
+    }
+}));
+app.delete("/api/images/:imageId", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, e_1, _b, _c;
+    let responseSent = false;
+    try {
+        const image = exports.imageLookup[req.params.imageId];
+        res.statusCode = 204;
+        res.end();
+        responseSent = true;
+        // Delete should remove every extension matching the file part!
+        console.log(`Will delete ${req.params.imageId} at ${image.path}/${image.name}`);
+        const dir = yield promises_1.default.opendir(image.path);
         try {
-            for (var _k = true, dir_2 = __asyncValues(dir), dir_2_1; dir_2_1 = yield dir_2.next(), _g = dir_2_1.done, !_g;) {
-                _j = dir_2_1.value;
-                _k = false;
+            for (var _d = true, dir_1 = __asyncValues(dir), dir_1_1; dir_1_1 = yield dir_1.next(), _a = dir_1_1.done, !_a;) {
+                _c = dir_1_1.value;
+                _d = false;
                 try {
-                    const dirent = _j;
-                    iterateDirectory(dirent, sourceDir);
+                    const dirent = _c;
+                    if (dirent.name.startsWith(`${image.name}.`)) {
+                        console.log(`rm ${image.path}/${dirent.name}`);
+                        yield promises_1.default.rm(`${image.path}/${dirent.name}`);
+                    }
                 }
                 finally {
-                    _k = true;
+                    _d = true;
+                }
+            }
+        }
+        catch (e_1_1) { e_1 = { error: e_1_1 }; }
+        finally {
+            try {
+                if (!_d && !_a && (_b = dir_1.return)) yield _b.call(dir_1);
+            }
+            finally { if (e_1) throw e_1.error; }
+        }
+        delete exports.imageLookup[req.params.imageId];
+    }
+    catch (err) {
+        console.error(err);
+        if (!responseSent) {
+            res.statusCode = 500;
+            res.end();
+        }
+    }
+}));
+app.put("/api/images/:imageId/pin", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _e, e_2, _f, _g;
+    try {
+        const image = exports.imageLookup[req.params.imageId];
+        const destinationPinnedDirectory = `${exports.sourceDir}/_pinned`;
+        const newFullFilename = `${exports.sourceDir}/_pinned/_${image.name}.${image.id}.${image.extension}`;
+        const originalPath = image.path;
+        yield promises_1.default.mkdir(destinationPinnedDirectory, { recursive: true });
+        yield promises_1.default.copyFile(image.fullFileName, newFullFilename);
+        console.log(`Copied from ${image.fullFileName} to ${newFullFilename}`);
+        try {
+            yield promises_1.default.copyFile(`${image.path}/${image.name}.txt`, `${destinationPinnedDirectory}/_${image.name}.${image.id}.txt`);
+            console.log(`Copied from ${image.path}/${image.name}.txt to ${destinationPinnedDirectory}/_${image.name}.${image.id}.txt`);
+        }
+        catch (err) { }
+        image.fullFileName = newFullFilename;
+        image.path = `${exports.sourceDir}/_pinned`;
+        res.header('content-type', 'application/json');
+        res.send(JSON.stringify(image));
+        // clean up any other files with the same prefix
+        const dir = yield promises_1.default.opendir(originalPath);
+        try {
+            for (var _h = true, dir_2 = __asyncValues(dir), dir_2_1; dir_2_1 = yield dir_2.next(), _e = dir_2_1.done, !_e;) {
+                _g = dir_2_1.value;
+                _h = false;
+                try {
+                    const dirent = _g;
+                    if (dirent.name.startsWith(image.name)) {
+                        console.log(`will rm ${originalPath}/${dirent.name}`);
+                        yield promises_1.default.rm(`${originalPath}/${dirent.name}`);
+                    }
+                }
+                finally {
+                    _h = true;
                 }
             }
         }
         catch (e_2_1) { e_2 = { error: e_2_1 }; }
         finally {
             try {
-                if (!_k && !_g && (_h = dir_2.return)) yield _h.call(dir_2);
+                if (!_h && !_e && (_f = dir_2.return)) yield _f.call(dir_2);
             }
             finally { if (e_2) throw e_2.error; }
         }
-        status = 'done';
     }
     catch (err) {
-        status = 'error';
+        res.statusCode = 500;
+        res.end();
         console.error(err);
     }
-});
-app.get("/api/status", (req, res) => {
-    res.header('content-type', 'application/json');
-    res.send(JSON.stringify(status));
-});
-app.get("/api/images", (req, res) => {
-    res.header('content-type', 'application/json');
-    res.send(JSON.stringify(foundImages));
-});
-app.get("/api/tags", (req, res) => {
-    res.header('content-type', 'application/json');
-    res.send(JSON.stringify(imageTagLookup));
-});
-app.get("/api/images/:imageId", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const idx = imageLookup[req.params.imageId];
-    const image = foundImages[idx];
-    const buffer = yield (0, sharp_1.default)(image.fullFileName)
-        .png()
-        .toBuffer();
-    res.header('content-type', 'image/png');
-    res.send(buffer);
 }));
 // start the Express server
 app.listen(port, () => {
     console.log(`server started at http://localhost:${port}`);
 });
-inventoryImages();
+(0, inventoryImages_1.inventoryImages)().then(() => {
+    setInterval(() => (0, inventoryImages_1.inventoryImages)(), 1000 * 60 * 10);
+});

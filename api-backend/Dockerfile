@@ -1,10 +1,6 @@
-FROM node:18-alpine as build-core
+FROM node:22-alpine as build-core
 RUN apk update
 RUN apk add zsh file gnupg cryptsetup curl make sudo e2fsprogs
-RUN curl https://files.dyne.org/tomb/Tomb-2.10.tar.gz --output Tomb-2.10.tar.gz
-RUN tar xvzf Tomb-2.10.tar.gz
-RUN cd Tomb-2.10 && make install
-RUN tomb -h
 
 RUN apk add imagemagick yarn
 RUN magick --version

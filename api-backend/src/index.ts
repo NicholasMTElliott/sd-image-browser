@@ -2,10 +2,19 @@ import express from 'express';
 import fs from 'fs/promises';
 import { createReadStream }  from 'fs';
 import sharp from 'sharp';
-import { inventoryImages } from './inventoryImages';
-import { reindex } from './reindex';
+import { inventoryImages } from './inventoryImages.js';
 
-interface ISDImage
+import sqlite3 from 'sqlite3';
+const  { Database } = sqlite3;
+
+const app = express();
+const port =  process.env.PORT || 3000; // default port to listen
+export const sourceDir = process.env.IMAGES_ROOT_DIR || './samples';
+export const supportedImages = ["png", "jpg", "webp", "jpeg", "gif"];
+
+const db = new Database(`${sourceDir}/localcache.db`);
+
+export interface ISDImage
 {
     id: string;
     fullFileName: string;
@@ -20,17 +29,11 @@ interface ISDImage
     pass: number;
 }
 
-export const foundImages: ISDImage[] = [];
-export let imageTagLookup: { [key: string]: number[] } = {
+export let imageTagLookup: { [key: string]: string[] } = {
     '': []
 };
-export let imageLookup: { [key: string]: number } = {};
+export let imageLookup: { [key: string]: ISDImage } = {};
 export let status : { current: 'none' | 'processing' | 'done' | string } = { current: 'none' };
-
-const app = express();
-const port =  process.env.PORT || 3000; // default port to listen
-export const sourceDir = process.env.IMAGES_ROOT_DIR || './samples';
-export const supportedImages = ["png", "jpg", "webp", "jpeg", "gif"];
 
 
 app.get( "/api/status", ( req, res ) => {
@@ -40,7 +43,7 @@ app.get( "/api/status", ( req, res ) => {
 
 app.get( "/api/images", ( req, res ) => {
     res.header('content-type', 'application/json');
-    res.send( JSON.stringify(foundImages) );
+    res.send( JSON.stringify(Object.values(imageLookup)) );
 } );
 
 app.post( "/api/images", ( req, res ) => {
@@ -56,9 +59,16 @@ app.get( "/api/tags", ( req, res ) => {
 
 app.get("/api/images/:imageId", async (req, res) => {
     try{
-        const idx = imageLookup[req.params.imageId];
-        const image = foundImages[idx];
-        console.log(`Mapped ${req.params.imageId} to ${idx} which worked out to ${image.id} ${image.fullFileName}`);
+        const image = imageLookup[req.params.imageId];
+        if(!image)
+        {
+            res.statusCode = 404;
+            res.end();
+            return;
+        }
+        
+        console.log(`Mapping ${req.params.imageId}`);
+        console.log(`Mapped ${req.params.imageId} to ${image.id} ${image.fullFileName}`);
         res.header('Cache-control', 'public, max-age=86400')
         await fs.access(image.fullFileName, fs.constants.F_OK);
 
@@ -89,57 +99,82 @@ app.get("/api/images/:imageId", async (req, res) => {
     }
 });
 
-app.delete( "/api/images/:imageId", async (req, res) => {
+app.delete("/api/images/:imageId", async (req, res) => {
+    let responseSent = false;
     try
     {
-        const idx = imageLookup[req.params.imageId];
-        const image = foundImages[idx];
-
-        // TODO delete should remove every extension matching the file part!
-        console.log(`Will delete ${req.params.imageId} at ${image.path}/${image.name}`);
-        await fs.rm(`${image.path}/${image.name}.${image.extension}`);
-        try {
-            await fs.rm(`${image.path}/${image.name}.txt`); // Ok if this failes
+        const image = imageLookup[req.params.imageId];
+        if(!image)
+        {
+            res.statusCode = 404;
+            res.end();
+            responseSent = true;
+            return;
         }
-        catch(err)
-        {} 
-        
-        foundImages.splice(idx, 1);
         res.statusCode = 204;
         res.end();
+        responseSent = true;
 
-        // reindex
-        reindex();
+        // Delete should remove every extension matching the file part!
+        console.log(`Will delete ${req.params.imageId} at ${image.path}/${image.name}`);
+        const dir = await fs.opendir(image.path);
+        for await (const dirent of dir) {
+            if(dirent.name.startsWith(`${image.name}.`))
+            {
+                console.log(`rm ${image.path}/${dirent.name}`);
+                await fs.rm(`${image.path}/${dirent.name}`);
+            }
+        }
+        delete imageLookup[req.params.imageId];
     }
     catch(err)
     {
-        res.statusCode = 500;
-        res.end();
         console.error(err);
+        if(!responseSent)
+        {
+            res.statusCode = 500;
+            res.end();
+        }
     }
 });
 
 app.put("/api/images/:imageId/pin", async (req, res) => {
     try
     {
-        const idx = imageLookup[req.params.imageId];
-        const image = foundImages[idx];
-        await fs.mkdir(`${sourceDir}/_pinned`, { recursive: true });
-        await fs.rename(image.fullFileName, `${sourceDir}/_pinned/_${image.name}.${image.id}.${image.extension}`);
+        const image = imageLookup[req.params.imageId];
+        if(!image)
+        {
+            res.statusCode = 404;
+            res.end();
+            return;
+        }
+        const destinationPinnedDirectory = `${sourceDir}/_pinned`;
+        const newFullFilename = `${sourceDir}/_pinned/_${image.name}.${image.id}.${image.extension}`;
+        const originalPath = image.path;
+        await fs.mkdir(destinationPinnedDirectory, { recursive: true });
+        await fs.copyFile(image.fullFileName, newFullFilename);
+        console.log(`Copied from ${image.fullFileName} to ${newFullFilename}`);
         try{
-            await fs.rename(`${image.path}/${image.name}.txt`, `${sourceDir}/_pinned/_${image.name}.${image.id}.txt`);
-            // clean up any other files with the same prefix
-            const dir = await fs.opendir(image.path);
-            for await (const dirent of dir) {
-                if(dirent.name.startsWith(image.name))
-                {
-                    console.log(`rm ${image.path}/${dirent.name}`);
-                    await fs.rm(`${image.path}/${dirent.name}`);
-                }
-            }
+            await fs.copyFile(`${image.path}/${image.name}.txt`, `${destinationPinnedDirectory}/_${image.name}.${image.id}.txt`);
+            console.log(`Copied from ${image.path}/${image.name}.txt to ${destinationPinnedDirectory}/_${image.name}.${image.id}.txt`);
+
         }catch(err){}
-        res.statusCode = 204;
-        res.end();
+        image.fullFileName = newFullFilename;
+        image.path = `${sourceDir}/_pinned`;
+
+        res.header('content-type', 'application/json');
+        res.send( JSON.stringify(image) );
+
+        // clean up any other files with the same prefix
+        const dir = await fs.opendir(originalPath);
+        for await (const dirent of dir) {
+            if(dirent.name.startsWith(image.name))
+            {
+                console.log(`will rm ${originalPath}/${dirent.name}`);
+                await fs.rm(`${originalPath}/${dirent.name}`);
+            }
+        }
+
     }
     catch(err)
     {
@@ -154,6 +189,20 @@ app.listen( port, () => {
     console.log( `server started at http://localhost:${ port }` );
 } );
 
-inventoryImages();
+function loop()
+{
+    inventoryImages().then(() => {
+        setTimeout(() => loop(), 1000 * 60 * 10)
+    });
+}
+
+loop();
 
 
+
+// Rework:
+
+// A DB, create at launch if it doesn't exist
+// It allows us to index by an image id as well as a thumbprint
+// We server information from this database
+// We allow paging

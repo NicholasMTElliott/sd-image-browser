@@ -1,10 +1,12 @@
 import fs from 'fs/promises';
 import sharp, { Sharp } from 'sharp';
 import crypto from 'crypto';
-import { supportedImages, foundImages, imageTagLookup, imageLookup } from './index';
+import { supportedImages, imageTagLookup, imageLookup } from './index.js';
 import { promisify } from 'util';
 import { exec } from 'child_process';
-import { pass } from './inventoryImages';
+import { pass } from './inventoryImages.js';
+import memoize from 'p-memoize';
+import ExpiryMap from 'expiry-map';
 
 
 // Some constants
@@ -12,8 +14,10 @@ const MaxImageDimension = 4096;
 
 const execAsync = promisify(exec);
 
-export async function processFile(name: string, path: string) {
-    console.log(`processFile ${name}, ${path}`);
+
+const cache = new ExpiryMap(500_000); // Cached values expire after 500 seconds
+export const processFile = memoize(iProcessFile,  {cache, cacheKey: arguments_ => JSON.stringify(arguments_)});
+export async function iProcessFile(name: string, path: string) {
     try {
         const fileParts = name.split('.');
         let extension = fileParts[fileParts.length - 1].toLowerCase();
@@ -29,13 +33,20 @@ export async function processFile(name: string, path: string) {
                 const fileContents = tagsFile.toString('utf-8');
                 metadata = fileContents;
                 tags = fileContents.split('\n')[0].split(/[,|]/).map(tag => tag.toLowerCase().trim().replace(/[{()}]/g, '').trim());
-                console.log('Successfully read metadata');
             }
             catch { }
 
             const originalFileName = `${path}/${namePart}.${extension}`;
             let fullFileName = originalFileName;
+
+            // If this file already exists and the size is the same, we can move on
             const stat = await fs.stat(fullFileName);
+            const id = crypto.createHash('md5').update(`${namePart}.${extension}.${stat.size}`).digest("hex");
+            if(imageLookup[id] && imageLookup[id].size === stat.size)
+            {
+                imageLookup[id].pass = pass;
+                return;
+            }
             
             let previewImageDataUrl: string;
             let thumbnailBuffer: Buffer;
@@ -70,6 +81,7 @@ export async function processFile(name: string, path: string) {
                 // convert and save
                 // Specify 'all pages' because this may be animated
                 const originalFile = sharp(fullFileName, { pages: -1 });
+                const originalFilename = fullFileName;
                 const fileInfo = await originalFile.metadata();
                 const reducedOriginal = originalFile
                     // Resize down to a max width of 4096.  We don't do height because of the way animated images calculate it
@@ -84,7 +96,8 @@ export async function processFile(name: string, path: string) {
                         quality: 80
                     });
                 const reducedOriginalBytes = await reducedOriginal.toBuffer();
-                await fs.writeFile(`${path}/${namePart}.webp`, reducedOriginalBytes);
+                const convertedFilename = `${path}/${namePart}.webp`;
+                await fs.writeFile(convertedFilename, reducedOriginalBytes);
                 console.log('Successfully converted to webp format');
 
                 // update our file references to this new version
@@ -100,12 +113,30 @@ export async function processFile(name: string, path: string) {
                         .toBuffer();
 
                 previewImageDataUrl = `data:image/webp;base64,${thumbnailBuffer.toString('base64')}`;
+
+                // Since we have converted to webp, we can delete the original
+                const newFileStat = await fs.stat(convertedFilename);
+                if(newFileStat.size === reducedOriginalBytes.byteLength)
+                {
+                    console.log(`Removing the original  ${originalFilename}`);
+                    originalFile.destroy();
+                    await fs.rm(originalFilename);
+                }
+                else
+                {
+                    console.error(`Skipped the delete because ${newFileStat.size} != ${reducedOriginalBytes.byteLength}`);
+                }
             }
             
-            let id = crypto.createHash('md5').update(thumbnailBuffer).digest("hex");
             try {
-                const imageIndex = foundImages.length;
-                foundImages.push({
+                for (const tag of tags) {
+                    imageTagLookup[tag] = [...(imageTagLookup[tag] ?? []), id];
+                }
+                if (tags.length == 0) {
+                    imageTagLookup[''].push(id);
+                }
+
+                imageLookup[id] = {
                     id,
                     fullFileName,
                     path,
@@ -114,22 +145,15 @@ export async function processFile(name: string, path: string) {
                     tags,
                     preview: previewImageDataUrl,
                     modified: stat.mtime.toISOString(),
-                    size: Math.ceil(stat.size / 1024),
+                    size: stat.size,
                     metadata,
                     pass
-                });
-                for (const tag of tags) {
-                    imageTagLookup[tag] = [...(imageTagLookup[tag] ?? []), imageIndex];
-                }
-                if (tags.length == 0) {
-                    imageTagLookup[''].push(imageIndex);
-                }
-                imageLookup[id] = imageIndex;
+                };
             }
             catch (err) { }
         }
     }
     catch (err) {
-        console.error(`Unexpected error handling ${path}/${name}`);
+        console.error(`Unexpected error handling ${path}/${name}`, err);
     }
 }

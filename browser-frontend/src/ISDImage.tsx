@@ -5,8 +5,6 @@ export interface ISDImage {
   name: string;
   extension: string;
   tags: string[];
-  preview: string;
   modified: string;
-  size: number;
   metadata: string;
 }
