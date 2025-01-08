@@ -8,7 +8,7 @@ export default function App() {
   const [images, setImages] = useState<ISDImage[]>([]);
   const [sortBy, setSortBy] = useState<'name'|'mtime'>('name');
   const [direction, setDirection] = useState<'up'|'down'>('up');
-  const [status, setStatus] = useState<string>('Unknown');
+  const [status, setStatus] = useState<string>('Loading...');
 
   const [loading, setLoading] = useState(0);
   const startLoading = useCallback(() => setLoading((prev) => prev + 1), []);
@@ -87,18 +87,25 @@ export default function App() {
       return;
     }
 
-    const sequence = deleteSequenceCount.current+1;
-    deleteSequenceCount.current = sequence;
+    try {
+      const {id} = filteredImages[selectedImage];
+      console.log(`Deleting image ${id}`);
 
-    const {id} = filteredImages[selectedImage];
-
-    // pre-strip out this item
-    setViewingImage(undefined);
-    setImages(images.filter(img => img.id !== id));
-    // Update filtered images or we will show something different than what is selected!
-    setTimeout( () => setViewingImage(filteredImages[selectedImage+1]?.id), 1);
-    await fetch(`/api/images/${id}`, { method: 'delete' });
-  }, [filteredImages, images, selectedImage]);
+      setViewingImage(undefined);
+      setImages(images.filter(img => img.id !== id));
+      
+      const response = await fetch(`/api/images/${id}`, { method: 'delete' });
+      if (!response.ok) {
+        throw new Error(`Delete failed: ${response.statusText}`);
+      }
+      
+      // Update view after successful delete
+      setTimeout(() => setViewingImage(filteredImages[selectedImage+1]?.id), 1);
+    } catch (err) {
+      console.error('Error deleting image:', err);
+      setStatus('Error deleting image');
+    }
+  }, [filteredImages, images, selectedImage, setImages]);
 
   const onRescan = useCallback(() => {
     fetch('/api/images', { method: 'post' });
@@ -217,54 +224,55 @@ export default function App() {
   </div>;
 }
 
-function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onRandom: () => void, onDelete: () => Promise<void>, selectedImage: number | undefined, setViewingImage: (v:string | undefined) => any, filteredImages: ISDImage[], onPin: () => Promise<void>, viewingImage: string | undefined) {
+/**
+ * Handles keyboard navigation and shortcuts
+ */
+function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onRandom: () => void, onDelete: () => Promise<void>, selectedImage: number | undefined, setViewingImage: (v:string | undefined) => void, filteredImages: ISDImage[], onPin: () => Promise<void>, viewingImage: string | undefined) {
   useEffect(() => {
-    const handleKeys = (event: any) => {
-      if (event.keyCode === 37) {
-        onPrev();
-        event.preventDefault();
+    const handleKeys = (event: KeyboardEvent) => {
+      console.log(`Key pressed: ${event.key} (${event.keyCode})`);
+      
+      switch(event.keyCode) {
+        case 37: // Left arrow
+          onPrev();
+          break;
+        case 39: // Right arrow
+          onNext();
+          break;
+        case 68: // 'D' key
+          onDelete();
+          break;
+        case 32: // Space
+          if(selectedImage !== undefined) {
+            setViewingImage(filteredImages[selectedImage].id);
+          }
+          break;
+        case 80: // 'P' key
+          if(selectedImage !== undefined) {
+            onPin();
+          }
+          break;
+        case 27: // Escape
+          setViewingImage(undefined);
+          break;
+        case 82: // 'R' key
+          onRandom();
+          break;
+        default:
+          return;
       }
-      else if (event.keyCode === 39) {
-        onNext();
-        event.preventDefault();
-      }
-      else if (event.keyCode === 39) {
-        onNext();
-        event.preventDefault();
-      }
-      else if (event.keyCode === 68) {
-        onDelete();
-        event.preventDefault();
-      }
-      else if (event.keyCode === 32 && selectedImage !== undefined) {
-        setViewingImage(filteredImages[selectedImage].id);
-        event.preventDefault();
-      }
-      else if (event.keyCode === 80 && selectedImage !== undefined) {
-        onPin();
-        event.preventDefault();
-      }
-      else if (event.keyCode === 27) {
-        setViewingImage(undefined);
-      }
-      else if (event.keyCode===82 ) {
-        onRandom();
-        event.preventDefault();
-      }
-      else {
-        console.error(`Other key: keyCode ${event.keyCode} key ${event.key}`, event.keyCode, event.key);
-      }
+      event.preventDefault();
     };
 
     window.addEventListener('keydown', handleKeys);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeys);
-    };
+    return () => window.removeEventListener('keydown', handleKeys);
   }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages, onPin, setViewingImage]);
 }
 
-function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDImage[], setSelectedImage: (v:number) => any, viewingImage: string | undefined, setViewingImage: (v:string|undefined) => any) {
+/**
+ * Navigation helper functions
+ */
+function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDImage[], setSelectedImage: (v:number) => void, viewingImage: string | undefined, setViewingImage: (v:string|undefined) => void) {
   const updateViewingImage = useCallback((id: string) => {
     setViewingImage(undefined);
     
@@ -275,19 +283,16 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
   }, [setViewingImage]);
 
   const onNext = useCallback(() => {
-    if (selectedImage === undefined)
+    if (selectedImage === undefined || filteredImages.length === 0) {
+      console.log('Cannot navigate: no selection or empty list');
       return;
+    }
 
-    const index = selectedImage;
-    console.error(`Current index is ${index}`);
-    const nextIndex = (index + 1) % filteredImages.length;
-    console.error(`Next index is ${nextIndex}`);
-    const nextImage = filteredImages[nextIndex].id;
-    console.error(`Next image is ${nextImage}`);
+    const nextIndex = (selectedImage + 1) % filteredImages.length;
+    console.log(`Navigating to next image: ${nextIndex}`);
     setSelectedImage(nextIndex);
-    updateViewingImage(nextImage);
-  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, updateViewingImage]);
-
+    updateViewingImage(filteredImages[nextIndex].id);
+  }, [selectedImage, filteredImages, setSelectedImage, updateViewingImage]);
 
   const onPrev = useCallback(() => {
     if (selectedImage === undefined)
@@ -341,30 +346,48 @@ function useFilteredAndSortedImages(sortBy: string, images: ISDImage[], directio
   return sortedImages;
 }
 
-function useFetchData(setImages: (v: any) => any, setStatus: (v:string) => any, startLoading: () => any, endLoading: () => any) {
+/**
+ * Fetches images and status from the API with error handling and sequence tracking
+ */
+function useFetchData(setImages: (v: ISDImage[]) => void, setStatus: (v:string) => void, startLoading: () => void, endLoading: () => void) {
   const fetchSequenceCount = useRef(1);
+  
   const fetchData = useCallback(async () => {
     startLoading();
-    try
-    {
+    console.log('Fetching image data...');
+    
+    try {
       const sequence = fetchSequenceCount.current + 1;
       fetchSequenceCount.current = sequence;
-      const imageTask = await fetch('/api/images');
-      const statusTask = await fetch('/api/status');
+      
+      const [imageResponse, statusResponse] = await Promise.all([
+        fetch('/api/images'),
+        fetch('/api/status')
+      ]);
 
-      const images = await imageTask.json();
-      const status = await statusTask.json();
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to fetch images: ${imageResponse.statusText}`);
+      }
+      if (!statusResponse.ok) {
+        throw new Error(`Failed to fetch status: ${statusResponse.statusText}`);
+      }
+
+      const images = await imageResponse.json();
+      const status = await statusResponse.json();
 
       if (sequence === fetchSequenceCount.current) {
+        console.log(`Loaded ${images.length} images`);
         setImages(images);
         setStatus(status)
       }
-    }
-    finally
-    {
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setStatus('Error loading data');
+    } finally {
       endLoading();
     }
   }, [endLoading, setImages, setStatus, startLoading]);
+  
   return fetchData;
 }
 

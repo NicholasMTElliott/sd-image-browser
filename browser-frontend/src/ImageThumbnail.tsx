@@ -1,22 +1,38 @@
-import { useCallback } from "react";
+import React from "react";
+import { useCallback, useState } from "react";
 import { ISDImage } from "./ISDImage";
 
-export function ImageThumbnail(props: { 
+/**
+ * Displays a selectable thumbnail of an image with loading state handling
+ */
+export const ImageThumbnail = React.memo(function ImageThumbnail(props: { 
     image: ISDImage; 
     isSelected: boolean;
-    onSelect: (id: string) => any;
+    onSelect: (id: string) => void;
   }) {
   const { isSelected, image, onSelect } = props;
+  const [hasError, setHasError] = useState(false);
+
   const onClick = useCallback(() => {
+    console.log(`Thumbnail selected: ${image.id}`);
     onSelect(image.id);
-  },
-    [onSelect, image.id]);
+  }, [onSelect, image.id]);
+
+  const onError = useCallback(() => {
+    console.error(`Failed to load thumbnail: ${image.id}`);
+    setHasError(true);
+  }, [image.id]);
 
   return <button
     type="button"
     onClick={onClick}
-    className={`image-container ${isSelected && 'selected'}`}
+    className={`image-container ${isSelected ? 'selected' : ''} ${hasError ? 'error' : ''}`}
     key={image.id}>
-    <img className='image-preview' alt={image.name} src={`/api/thumbnails/${image.id}`} loading="lazy" />
+    <img 
+      className='image-preview' 
+      alt={image.name} 
+      src={`/api/thumbnails/${image.id}`} 
+      onError={onError}
+      loading="lazy" />
   </button>;
-}
+});

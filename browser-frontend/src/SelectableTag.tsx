@@ -1,10 +1,14 @@
 import { useCallback } from "react";
 
-export function SelectableTag(props: { tagName: string; selectedTags: any; setSelectedTags: any; }) {
-  const { tagName, selectedTags, setSelectedTags } = props;
+/**
+ * Displays a selectable tag with a checkbox
+ */
+export function SelectableTag(props: { tagName: string; selectedTags: Record<string, boolean>; setSelectedTags: (tags: (prev:Record<string, boolean>) => Record<string, boolean> ) => void; }) {
+  const { tagName, setSelectedTags } = props;
+
   const onClick = useCallback(() => {
-    setSelectedTags({ ...selectedTags, [tagName]: !selectedTags[tagName] });
-  }, [tagName, selectedTags, setSelectedTags]);
+    setSelectedTags((prevTags) => ({ ...prevTags, [tagName]: !prevTags[tagName] }));
+  }, [tagName, setSelectedTags]);
 
   return <label key={tagName} htmlFor={tagName}>
     <input id={tagName} key={tagName} type="checkbox" onClick={onClick} />
