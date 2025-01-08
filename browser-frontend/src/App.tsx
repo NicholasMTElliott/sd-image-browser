@@ -3,29 +3,40 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shuffle, uniq } from 'lodash';
 import { ImageThumbnail } from "./ImageThumbnail";
 import { ISDImage } from "./ISDImage";
+import { useHistory, useLocation } from "react-router-dom";
 
 export default function App() {
-  const [images, setImages] = useState<ISDImage[]>([]);
-  const [sortBy, setSortBy] = useState<'name'|'mtime'>('name');
-  const [direction, setDirection] = useState<'up'|'down'>('up');
-  const [status, setStatus] = useState<string>('Loading...');
+  const history = useHistory();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
 
+  const [images, setImages] = useState<ISDImage[]>([]);
+  const [sortBy, setSortBy] = useState<'name'|'mtime'>(queryParams.get('sortBy') as 'name'|'mtime' || 'name');
+  const [direction, setDirection] = useState<'up'|'down'>(queryParams.get('direction') as 'up'|'down' || 'up');
+  const [status, setStatus] = useState<string>('Loading...');
   const [loading, setLoading] = useState(0);
   const startLoading = useCallback(() => setLoading((prev) => prev + 1), []);
   const endLoading = useCallback(() => setLoading((prev) => prev - 1), []);
   const isLoading = loading > 0;
-
   const [selectedImage, setSelectedImage] = useState<number>();
-  const [viewingImage, setViewingImage] = useState<string>();
+  const [viewingImage, setViewingImage] = useState<string|undefined>(queryParams.get('viewingImage') || '');
+  const [prefix, setPrefix] = useState(queryParams.get('prefix') || '');
 
   const fetchData = useFetchData(setImages, setStatus, startLoading, endLoading);
 
-  // on mount, fetch
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const [prefix, setPrefix] = useState('');
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (prefix) params.set('prefix', prefix);
+    if (viewingImage) params.set('viewingImage', viewingImage);
+    if (sortBy) params.set('sortBy', sortBy);
+    if (direction) params.set('direction', direction);
+    history.push('/?' + params.toString());
+  }, [prefix, viewingImage, sortBy, direction, history]);
+
   const prefixes = useMemo(() => {
     const prefixlist = images.reduce((collection, img) => {
       const parts = img.path.split('/');
@@ -60,11 +71,11 @@ export default function App() {
     }
     return splits.map(s => prefix + s).sort();
   }, [images]);
+
   const filteredImages = useFilteredAndSortedImages(sortBy, images, direction, prefix);
 
   const { onPrev, onNext, onRandom } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
 
-  
   const onPin = useCallback(async () => {
     if(selectedImage === undefined)
     {
@@ -72,7 +83,6 @@ export default function App() {
     }
     const {id} = filteredImages[selectedImage];
 
-    // pre-strip out this item
     const response = await fetch(`/api/images/${id}/pin`, { method: 'put' });
     const image = await response.json();
     setImages((imgs) => imgs.map(i => i.id === id ? image : i));
@@ -99,7 +109,6 @@ export default function App() {
         throw new Error(`Delete failed: ${response.statusText}`);
       }
       
-      // Update view after successful delete
       setTimeout(() => setViewingImage(filteredImages[selectedImage+1]?.id), 1);
     } catch (err) {
       console.error('Error deleting image:', err);

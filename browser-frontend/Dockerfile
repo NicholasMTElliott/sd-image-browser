@@ -1,15 +1,19 @@
-FROM node:18 as builder
+FROM node:22 as builder
 
 WORKDIR /app
-COPY . .
+COPY package.json yarn.lock tsconfig.json .pnp.cjs .pnp.loader.mjs .yarnrc.yml ./
+COPY .yarn .yarn
 RUN yarn
+COPY . .
 RUN yarn build
 
 FROM nginx
 RUN rm /etc/nginx/nginx.conf /etc/nginx/conf.d/default.conf
 COPY conf /etc/nginx
 COPY --from=builder /app/build/*  /usr/share/nginx/html/
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 RUN mkdir -p /etc/nginx/ssl
-RUN openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/self-signed.key -out /etc/nginx/ssl/self-signed.crt -subj "/C=US/ST=YourState/L=YourCity/O=YourOrganization/OU=YourUnit/CN=192.168.1.11"
 
+ENTRYPOINT ["/entrypoint.sh"]
 EXPOSE 8080
