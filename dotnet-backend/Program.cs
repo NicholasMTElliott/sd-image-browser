@@ -124,19 +124,7 @@ try
             {
                 return Results.NotFound();
             }
-
-            if(entry.Extension.ToLower() == "gif")
-            {
-                return Results.File(Path.Combine(sourceDir, entry.FullFileName), "image/gif", lastModified: DateTimeOffset.Parse(entry.Modified));                
-            }
-            else if(entry.Extension.ToLower() == "webp")
-            {
-                return Results.File(Path.Combine(sourceDir, entry.FullFileName), "image/webp", lastModified: DateTimeOffset.Parse(entry.Modified));
-            }
-            else
-            {
-                return Results.InternalServerError($"Unsupported extension '{entry.Extension}'");
-            }
+            return Results.Json(entry);
         }
         catch(Exception ex)
         {
