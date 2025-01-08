@@ -6,6 +6,7 @@ using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Formats.Png;
+using Microsoft.Extensions.Logging;
 
 namespace ImageScanner;
 
@@ -17,14 +18,20 @@ public enum ProcessingStatus
     Error
 }
 
+/// <summary>
+/// The ImageProcessor class handles scanning directories for images, converting them
+/// to webp when necessary, reading and storing metadata, deleting images, and
+/// pinning images to a special directory.
+/// </summary>
 public class ImageProcessor
 {
     public readonly static string[] SupportedImages = ["png", "jpg", "webp", "jpeg", "gif"];
     private ProcessingStatus _currentStatus = ProcessingStatus.None;
-    private Timer _timer;
+    private Timer? _timer;
     private readonly SemaphoreSlim _lock = new SemaphoreSlim(1);
     private readonly string _sourceDir;
     private readonly DbContext _context;
+    private readonly ILogger<ImageProcessor> _logger;
     private readonly WebpEncoder _thumbnailEncoder  = new WebpEncoder()
         {
             Quality = 50
@@ -38,7 +45,7 @@ public class ImageProcessor
     public string CurrentStatus => Enum.GetName(typeof(ProcessingStatus), _currentStatus) ?? "Error";
 
     // Constructor to initialize the ImageProcessor with source directory and database context
-    public ImageProcessor(string sourceDir, DbContext context)
+    public ImageProcessor(string sourceDir, DbContext context, ILogger<ImageProcessor> logger)
     {
         if (string.IsNullOrWhiteSpace(sourceDir))
         {
@@ -47,6 +54,7 @@ public class ImageProcessor
 
         _sourceDir = sourceDir;
         _context = context ?? throw new ArgumentNullException(nameof(context));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     // Method to queue an inventory update
@@ -63,16 +71,20 @@ public class ImageProcessor
         }, null, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15) );
     }
 
-    // Method to execute the inventory update process
+    /// <summary>
+    /// Starts an asynchronous job that scans for new images, processes them, and
+    /// removes any images no longer present. The result is tracked in _currentStatus.
+    /// </summary>
     private async Task ExecuteInventoryUpdate()
     {
-        Console.WriteLine($"ENTER:{nameof(ExecuteInventoryUpdate)}");
+        _logger.LogInformation("Starting inventory update at {Timestamp}", DateTimeOffset.UtcNow);
         await _lock.WaitAsync();
         try
         {
-            Console.WriteLine($"START:{nameof(ExecuteInventoryUpdate)}");
+            _logger.LogInformation("START: {Name}", nameof(ExecuteInventoryUpdate));
             _currentStatus = ProcessingStatus.Processing;
             var timestamp = DateTimeOffset.UtcNow;
+            _logger.LogInformation("Processing directory {SourceDir} with status {Status}", _sourceDir, _currentStatus);
             await IterateDirectory(_sourceDir);
             await _context.ClearUnseen(timestamp);
             _currentStatus = ProcessingStatus.Done;
@@ -80,22 +92,28 @@ public class ImageProcessor
         catch(Exception ex)
         {
             _currentStatus = ProcessingStatus.Error;
-            await Console.Error.WriteLineAsync($"Exception in {nameof(ExecuteInventoryUpdate)}: ({ex.GetType().Name}) {ex.Message}");
-            await Console.Error.WriteLineAsync(ex.StackTrace);
+            _logger.LogError(ex, "Exception in {Name}: {Message}", nameof(ExecuteInventoryUpdate), ex.Message);
+            _logger.LogError(ex.StackTrace);
             throw;
         }
         finally
         {
+            _logger.LogInformation("Completed inventory update. Final status: {Status}", _currentStatus);
             _lock.Release();
-            Console.WriteLine($"END:{nameof(ExecuteInventoryUpdate)}");
+            _logger.LogInformation("END: {Name}", nameof(ExecuteInventoryUpdate));
         }
     }
 
-    // Method to iterate through directories and process files
+    /// <summary>
+    /// Recursively iterates through subdirectories and processes any discovered image files.
+    /// </summary>
     private async Task IterateDirectory(string dir)
     {
-        Console.WriteLine(nameof(IterateDirectory));
-        Console.WriteLine(dir);
+        var startTime = DateTimeOffset.UtcNow;
+        _logger.LogInformation("Processing directory {Directory}", dir);
+        
+        _logger.LogInformation(nameof(IterateDirectory));
+        _logger.LogInformation(dir);
         if(!Directory.Exists(dir))
         {
             return;
@@ -110,25 +128,42 @@ public class ImageProcessor
             }
             catch(Exception ex)
             {
-                await Console.Error.WriteLineAsync($"Exception processing subdirectory {subdir}: ({ex.GetType().Name}) {ex.Message}");
-                await Console.Error.WriteLineAsync(ex.StackTrace);
+                _logger.LogError(ex, "Exception processing subdirectory {Subdir}: {Message}", subdir, ex.Message);
+                _logger.LogError(ex.StackTrace);
             }
             await Task.Delay(0);
         }
 
         var files = Directory.EnumerateFiles(dir);
+        var fileCount = files.Count();
+        _logger.LogInformation("Found {Count} files in directory {Directory}", fileCount, dir);
+        var processedCount = 0;
+        
         foreach(var file in files)
         {
             await ScanFile(file);
+            processedCount++;
+            _logger.LogDebug("Progress: {Processed}/{Total} files in {Directory}", 
+                processedCount, fileCount, dir);
         }
+        
+        var duration = DateTimeOffset.UtcNow - startTime;
+        _logger.LogInformation("Completed directory {Directory} in {Duration}ms", 
+            dir, duration.TotalMilliseconds);
     }
 
-    // Method to scan and process individual files
+    /// <summary>
+    /// Scans an individual file: verifies it's supported, converts if required,
+    /// extracts metadata, and updates the database with new or updated image entries.
+    /// </summary>
     private async Task ScanFile(string file)
     {
+        var startTime = DateTimeOffset.UtcNow;
+        _logger.LogDebug("Processing file {File}", file);
+        
         if(!File.Exists(file))
         {
-            Console.WriteLine("Does not exist");
+            _logger.LogInformation("Does not exist");
             return;
         }
 
@@ -141,12 +176,14 @@ public class ImageProcessor
         // Convert non-webp and non-gif images to webp format
         if(fileExtension != "gif" && fileExtension != "webp")
         {
+            _logger.LogInformation("Converting {File} ({Size} bytes) from {OriginalFormat} to WebP", 
+                file, new FileInfo(file).Length, fileExtension);
             var destinationFilename = Path.Combine(
-                Path.GetDirectoryName(file), 
+                GetDirectoryNameWithCheck(file),
                 Path.GetFileNameWithoutExtension(file)+".webp");
 
             // Convert
-            Console.WriteLine($"Converting {file} to {destinationFilename}");
+            _logger.LogInformation("Converting {File} to {DestinationFilename}", file, destinationFilename);
             using(var inStream = new BufferedStream(File.OpenRead(file), 5_000_000))
             using(var outStream = new BufferedStream(File.OpenWrite(destinationFilename), 5_000_000))
             using (Image image = Image.Load(inStream))
@@ -157,7 +194,7 @@ public class ImageProcessor
                     if(md.TextData.Any())
                     {
                         var metadataFilename = Path.Combine(
-                            Path.GetDirectoryName(file), 
+                            GetDirectoryNameWithCheck(file),
                             Path.GetFileNameWithoutExtension(file)+".txt");
                         using(var metadataStream = File.OpenWrite(metadataFilename))
                         using(var writer = new StreamWriter(metadataStream))
@@ -175,7 +212,7 @@ public class ImageProcessor
                 {
                     if(image.Width > 4096)
                     {
-                        Console.WriteLine("Resizing width down to 4096");
+                        _logger.LogInformation("Resizing width down to 4096");
                         image.Mutate(c => c.Resize(new ResizeOptions {
                             Size = new Size { Width = 4096 },
                             Mode = ResizeMode.Max
@@ -186,7 +223,7 @@ public class ImageProcessor
                 {
                     if(image.Height > 4096)
                     {
-                        Console.WriteLine("Resizing height down to 4096");
+                        _logger.LogInformation("Resizing height down to 4096");
                         image.Mutate(c => c.Resize(new ResizeOptions {
                             Size = new Size { Height = 4096 },
                             Mode = ResizeMode.Max
@@ -200,11 +237,11 @@ public class ImageProcessor
             if(File.Exists(destinationFilename))
             {
                 File.Delete(file);           
-                Console.WriteLine($"Converted {file} to {destinationFilename}");
+                _logger.LogInformation("Converted {File} to {DestinationFilename}", file, destinationFilename);
             }
             else
             {
-                Console.WriteLine($"Destination image {destinationFilename} did not exist after creation");
+                _logger.LogInformation("Destination image {DestinationFilename} did not exist after creation", destinationFilename);
                 return;
             } 
             file = destinationFilename;
@@ -213,7 +250,7 @@ public class ImageProcessor
 
         var fileInfo = new FileInfo(file);
         var size = fileInfo.Length;
-        var path = Path.GetRelativePath(_sourceDir, Path.GetDirectoryName(file));
+        var path = Path.GetRelativePath(_sourceDir, GetDirectoryNameWithCheck(file));
         var name = Path.GetFileNameWithoutExtension(file);
         var relativeFilename = Path.GetRelativePath(_sourceDir, file);
         var existingEntry = await _context.GetImageEntryAsync(relativeFilename);
@@ -227,10 +264,10 @@ public class ImageProcessor
         // Process this image and read any associated attribute information
         var tags = new List<string>();
         var metadata = "";
-        var metadataFile = Path.Combine(Path.GetDirectoryName(file)!, Path.GetFileNameWithoutExtension(file) + ".txt" );
+        var metadataFile = Path.Combine(GetDirectoryNameWithCheck(file), Path.GetFileNameWithoutExtension(file) + ".txt" );
         if(File.Exists(metadataFile))
         {
-            Console.WriteLine("Getting Metadata");
+            _logger.LogInformation("Getting Metadata");
             metadata =  UTF8Encoding.UTF8.GetString(await File.ReadAllBytesAsync(metadataFile));
             tags = Regex.Split(metadata.Split("\n")[0], "[,|]")
                 .Select(tag => Regex.Replace(tag.ToLower().Trim(), "[{()}]", "", RegexOptions.Multiline))
@@ -248,6 +285,8 @@ public class ImageProcessor
             hash = BitConverter.ToString(checksum).Replace("-", String.Empty);
         }
 
+        _logger.LogDebug("File {File} hash: {Hash}", file, hash);
+        
         var existingPreview = await _context.GetImagePreviewAsync(hash);
         if(existingPreview == null)
         {
@@ -269,21 +308,33 @@ public class ImageProcessor
                 memoryStream.Seek(0, SeekOrigin.Begin);
                 var preview = new ImagePreview(hash, memoryStream.GetBuffer(), size, fileExtension);
                 await _context.CreateImagePreviewAsync(preview);
+                _logger.LogInformation("Created new thumbnail for {File}", file);
             }
+        }
+        else
+        {
+            _logger.LogDebug("Using existing thumbnail for {File}", file);
         }
         
         var imageEntry = new ImageEntry(Guid.NewGuid().ToString(), relativeFilename, path, name, fileExtension, String.Join('|', tags),
             hash, metadata, DateTimeOffset.UtcNow.ToString("o"), DateTimeOffset.UtcNow.ToString("o"));
         await _context.CreateImageEntryAsync(imageEntry);
+        
+        var duration = DateTimeOffset.UtcNow - startTime;
+        _logger.LogInformation("Completed processing {File} in {Duration}ms", 
+            file, duration.TotalMilliseconds);
     }
 
-    // Method to delete an image by its ID
+    /// <summary>
+    /// Deletes an image and corresponding .txt file from the filesystem and database.
+    /// </summary>
     public async Task<bool> DeleteImage(Guid imageId)
     {
+        _logger.LogInformation("Attempting to delete image {ImageId}", imageId);
         var entry = await _context.GetImageEntryAsync(imageId);
         if(entry == null)
         {
-            Console.WriteLine($"No entry for {imageId}");
+            _logger.LogInformation("No entry for {ImageId}", imageId);
             return false;
         }
 
@@ -293,7 +344,7 @@ public class ImageProcessor
         var file = entry.FullFileName;
         if(!File.Exists(Path.Combine(_sourceDir,file)))
         {
-            Console.WriteLine($"!File.Exists({file})");
+            _logger.LogInformation("!File.Exists({File})", file);
             return false;
         }
 
@@ -304,26 +355,31 @@ public class ImageProcessor
         {
             try
             {
+                _logger.LogDebug("Deleting associated file: {File}", other);
                 File.Delete(other);
             }
             catch(Exception ex)
             {
-                Console.WriteLine($"Exception thrown deleting {other}: ({ex.GetType().Name}) {ex.Message}");
+                _logger.LogError(ex, "Exception thrown deleting {Other}: {Message}", other, ex.Message);
             }
         }
+        _logger.LogInformation("Successfully deleted image {ImageId} and associated files", imageId);
         return true;
     }
 
-    // Method to pin an image by copying it to a special directory
-    internal async Task PinImage(Guid imageId)
+    /// <summary>
+    /// Pins an image by copying it and any .txt file to a special directory, and updates the entry.
+    /// </summary>
+    internal async Task<ImageEntry?> PinImage(Guid imageId)
     {
+        _logger.LogInformation("Pinning image {ImageId}", imageId);
         try
         {
             var entry = await _context.GetImageEntryAsync(imageId);
             if (entry == null)
             {
-                Console.WriteLine("No image entry found for the provided ID.");
-                return;
+                _logger.LogInformation("No image entry found for the provided ID.");
+                return null;
             }
 
             var destinationPinnedDirectory = Path.Combine(_sourceDir, "_pinned");
@@ -332,15 +388,16 @@ public class ImageProcessor
             var sourceFullFilePath = Path.Combine(_sourceDir, entry.FullFileName);
 
             Directory.CreateDirectory(destinationPinnedDirectory);
+            _logger.LogDebug("Created pinned directory: {Directory}", destinationPinnedDirectory);
             File.Copy(sourceFullFilePath, destinationFullFilename);
-            Console.WriteLine($"Copied from {sourceFullFilePath} to {destinationFullFilename}");
+            _logger.LogInformation("Copied from {SourceFullFilePath} to {DestinationFullFilename}", sourceFullFilePath, destinationFullFilename);
 
             try
             {
                 var sidecarSource = Path.Combine(originalDirectory, entry.Name + ".txt");
                 var sidecarDestination = Path.Combine(destinationPinnedDirectory, $"_{entry.Name}.{entry.Id}.txt");
                 File.Copy(sidecarSource, sidecarDestination);
-                Console.WriteLine($"Copied from {sidecarSource} to {sidecarDestination}");
+                _logger.LogInformation("Copied from {SidecarSource} to {SidecarDestination}", sidecarSource, sidecarDestination);
             }
             catch
             {
@@ -360,14 +417,31 @@ public class ImageProcessor
             {
                 if (Path.GetFileName(file).StartsWith(entry.Name))
                 {
-                    Console.WriteLine($"Deleting {file}");
+                    _logger.LogInformation("Deleting {File}", file);
                     File.Delete(file);
                 }
             }
+            _logger.LogInformation("Successfully pinned image {ImageId}", imageId);
+            return updatedEntry;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error pinning image: {ex.Message}");
+            _logger.LogError(ex, "Error pinning image: {Message}", ex.Message);
+            return null;
         }
+    }
+
+    /// <summary>
+    /// Returns the directory name for a given file. Throws an exception if it fails.
+    /// This ensures we do not operate on null directories.
+    /// </summary>
+    private string GetDirectoryNameWithCheck(string fileName)
+    {
+        var directoryName = Path.GetDirectoryName(fileName);
+        if (directoryName is null)
+        {
+            throw new ArgumentException($"Cannot get directory name for {fileName}");
+        }
+        return directoryName;
     }
 }

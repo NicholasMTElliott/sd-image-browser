@@ -7,11 +7,14 @@ try
     string sourceDir = Environment.GetEnvironmentVariable("IMAGES_ROOT_DIR") ?? "./samples";
 
     var builder = WebApplication.CreateBuilder(args);
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
     var app = builder.Build();
 
+    var logger = app.Services.GetRequiredService<ILogger<ImageProcessor>>();
     using var context = new DbContext(sourceDir, true);
     await context.MigrateAsync();
-    var processor = new ImageProcessor(sourceDir, context);
+    var processor = new ImageProcessor(sourceDir, context, logger);
     processor.StartTimer();
 
     // Set up a periodic background scan
@@ -116,8 +119,24 @@ try
     app.MapPut("/api/images/{imageId}/pin", async(Guid imageId) => {
         try
         {
-            await processor.PinImage(imageId);       
-            return Results.NoContent();
+            var entry = await processor.PinImage(imageId);
+            if(entry == null)
+            {
+                return Results.NotFound();
+            }
+
+            if(entry.Extension.ToLower() == "gif")
+            {
+                return Results.File(Path.Combine(sourceDir, entry.FullFileName), "image/gif", lastModified: DateTimeOffset.Parse(entry.Modified));                
+            }
+            else if(entry.Extension.ToLower() == "webp")
+            {
+                return Results.File(Path.Combine(sourceDir, entry.FullFileName), "image/webp", lastModified: DateTimeOffset.Parse(entry.Modified));
+            }
+            else
+            {
+                return Results.InternalServerError($"Unsupported extension '{entry.Extension}'");
+            }
         }
         catch(Exception ex)
         {

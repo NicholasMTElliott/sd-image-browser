@@ -22,3 +22,5 @@ services:
       - 3333:8080
     volumes:
       - ../stable-diffusion-webui-automatic1111/outputs:/images
+      - ../comfyui/ComfyUI/output:/images/comfyui
+
