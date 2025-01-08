@@ -121,6 +121,24 @@ public class DbContext : IDisposable
             });
     }
 
+    public async Task ClearUnseen(DateTimeOffset timestamp)
+    {
+        var count = await _connection.ExecuteAsync(@$"DELETE FROM {nameof(ImageEntry)} 
+            WHERE {nameof(ImageEntry.LastSeen)}<@Now",
+            new {
+                Now = timestamp.ToString("o")
+            });
+
+        Console.WriteLine($"{count} entries removed after the last scan.");
+            
+        count = await _connection.ExecuteAsync(@$"
+            DELETE FROM {nameof(ImagePreview)}
+            WHERE {nameof(ImagePreview.Hash)} NOT IN (
+                SELECT distinct {nameof(ImageEntry.Hash)} FROM {nameof(ImageEntry)}
+            ) ");
+        Console.WriteLine($"{count} previews removed after the last scan.");
+    }
+
     public async Task<ImagePreview?> GetImagePreviewAsync(string hash)
     {
         return await _connection.QueryFirstOrDefaultAsync<ImagePreview>(@$" SELECT p.*
@@ -182,14 +200,16 @@ public class DbContext : IDisposable
 
     public async Task RemoveEntry(Guid imageId, string hash)
     {
-        await _connection.ExecuteAsync(@$"
+        var count = await _connection.ExecuteAsync(@$"
             DELETE FROM {nameof(ImageEntry)}
             WHERE {nameof(ImageEntry.Id)}=@Id",
             new {
                 Id = imageId
             });
+
+        Console.WriteLine($"{count} entries deleted fpr {imageId}.");
         
-        await _connection.ExecuteAsync(@$"
+        count = await _connection.ExecuteAsync(@$"
             DELETE FROM {nameof(ImagePreview)}
             WHERE {nameof(ImagePreview.Hash)}=@Hash
             AND {nameof(ImagePreview.Hash)} NOT IN (
@@ -197,6 +217,23 @@ public class DbContext : IDisposable
             ) ",
             new {
                Hash = hash
+            });
+        Console.WriteLine($"{count} previews deleted.");
+    }
+
+    public async Task UpdateImageEntry(ImageEntry entry)
+    {
+        await _connection.ExecuteAsync(@$"UPDATE {nameof(ImageEntry)}
+            SET 
+                {nameof(ImageEntry.FullFileName)} = @{nameof(ImageEntry.FullFileName)},
+                {nameof(ImageEntry.Path)} = @{nameof(ImageEntry.Path)},
+                {nameof(ImageEntry.Modified)} = @{nameof(ImageEntry.Modified)}
+            WHERE {nameof(ImageEntry.Id)} = @{nameof(ImageEntry.Id)}",
+            new {
+                entry.Id,
+                entry.FullFileName,
+                entry.Path,
+                Modified = DateTimeOffset.UtcNow.ToString("o")
             });
     }
 }

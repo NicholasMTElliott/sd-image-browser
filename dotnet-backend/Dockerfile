@@ -7,9 +7,15 @@ COPY *.sln .
 COPY *.csproj .
 RUN dotnet restore dotnet-backend.generated.sln
 
-# copy everything else and build app
+# copy everything else and build
 COPY . .
 WORKDIR /source
+RUN dotnet build -c release dotnet-backend.generated.sln
+
+# run tests
+RUN dotnet test -c release dotnet-backend.generated.sln
+
+# publish
 RUN dotnet publish -c release -o /app dotnet-backend.generated.sln
 
 # final stage/image
