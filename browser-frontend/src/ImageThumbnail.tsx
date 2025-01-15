@@ -1,15 +1,14 @@
-import React from "react";
-import { useCallback, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ISDImage } from "./ISDImage";
 
 /**
  * Displays a selectable thumbnail of an image with loading state handling
  */
-export const ImageThumbnail = React.memo(function ImageThumbnail(props: { 
+export const ImageThumbnail = React.memo((props: { 
     image: ISDImage; 
     isSelected: boolean;
     onSelect: (id: string) => void;
-  }) {
+  }) => {
   const { isSelected, image, onSelect } = props;
   const [hasError, setHasError] = useState(false);
 

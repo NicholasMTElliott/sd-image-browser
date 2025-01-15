@@ -1,26 +1,70 @@
 /* eslint-disable no-plusplus */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { shuffle, uniq } from 'lodash';
+import { useNavigate, useLocation } from "react-router-dom";
 import { ImageThumbnail } from "./ImageThumbnail";
 import { ISDImage } from "./ISDImage";
-import { useHistory, useLocation } from "react-router-dom";
+import { ImageViewer } from "./ImageViewer";
+
+function buildUrl(prefix: string, viewingImage: string, sortBy: string, direction: string) {
+  const params = new URLSearchParams();
+  if (prefix) params.set('prefix', prefix);
+  if (viewingImage) params.set('viewingImage', viewingImage);
+  if (sortBy) params.set('sortBy', sortBy);
+  if (direction) params.set('direction', direction);
+  return `/?${params.toString()}`;
+}
 
 export default function App() {
-  const history = useHistory();
+  const navigate = useNavigate();
   const location = useLocation();
+
   const queryParams = new URLSearchParams(location.search);
 
+  const prefix = queryParams.get('prefix') || '';
+  const viewingImage = queryParams.get('viewingImage') || '';
+  const sortBy = queryParams.get('sortBy') as 'name'|'mtime' || 'name';
+  const direction = queryParams.get('direction') as 'up'|'down' || 'up';
+
+  const setPrefix = useCallback((v: string | undefined) => 
+  {
+    const url = buildUrl(v || '', viewingImage, sortBy, direction);
+    // Only navigate if the URL has changed and isn't in our recent history
+    if(url !== document.location.pathname + document.location.search)
+    {
+      console.log(`Navigating to ${url}`);
+      navigate(url);
+    }
+  }, [direction, navigate, sortBy, viewingImage]);
+
+  const setViewingImage = useCallback((v: string | undefined) => {
+    const url = buildUrl(prefix, v || '', sortBy, direction);
+    // Only navigate if the URL has changed and isn't in our recent history
+    if(url !== document.location.pathname + document.location.search)
+    {
+      console.log(`Navigating to ${url}`);
+      navigate(url);
+    }
+  }, [direction, navigate, prefix, sortBy]);
+
+  const setSortByAndDirection = useCallback((paramSortBy: 'name'|'mtime' | undefined, paramDirection: 'up'|'down' | undefined ) => {
+    const url = buildUrl(prefix, viewingImage, paramSortBy || sortBy, paramDirection || direction);
+    // Only navigate if the URL has changed and isn't in our recent history
+    if(url !== document.location.pathname + document.location.search)
+    {
+      console.log(`Navigating to ${url}`);
+      navigate(url);
+    }
+  }, [direction, navigate, prefix, sortBy, viewingImage]);
+
+
   const [images, setImages] = useState<ISDImage[]>([]);
-  const [sortBy, setSortBy] = useState<'name'|'mtime'>(queryParams.get('sortBy') as 'name'|'mtime' || 'name');
-  const [direction, setDirection] = useState<'up'|'down'>(queryParams.get('direction') as 'up'|'down' || 'up');
   const [status, setStatus] = useState<string>('Loading...');
   const [loading, setLoading] = useState(0);
   const startLoading = useCallback(() => setLoading((prev) => prev + 1), []);
   const endLoading = useCallback(() => setLoading((prev) => prev - 1), []);
   const isLoading = loading > 0;
-  const [selectedImage, setSelectedImage] = useState<number>();
-  const [viewingImage, setViewingImage] = useState<string|undefined>(queryParams.get('viewingImage') || '');
-  const [prefix, setPrefix] = useState(queryParams.get('prefix') || '');
+  const urlHistory = useRef<string[]>([]);
 
   const fetchData = useFetchData(setImages, setStatus, startLoading, endLoading);
 
@@ -28,14 +72,26 @@ export default function App() {
     fetchData();
   }, [fetchData]);
 
+
   useEffect(() => {
     const params = new URLSearchParams();
     if (prefix) params.set('prefix', prefix);
     if (viewingImage) params.set('viewingImage', viewingImage);
     if (sortBy) params.set('sortBy', sortBy);
     if (direction) params.set('direction', direction);
-    history.push('/?' + params.toString());
-  }, [prefix, viewingImage, sortBy, direction, history]);
+    const url = `/?${params.toString()}`;
+    // Only navigate if the URL has changed and isn't in our recent history
+    if(url !== document.location.pathname + document.location.search && !urlHistory.current.includes(url))
+    {
+      console.log(`Navigating to ${url}`);
+      navigate(url);
+      urlHistory.current.push(url);
+      // only retain the last 4 urls
+      urlHistory.current = urlHistory.current.slice(-4);
+    }
+  }, [prefix, viewingImage, sortBy, direction, navigate]);
+
+
 
   const prefixes = useMemo(() => {
     const prefixlist = images.reduce((collection, img) => {
@@ -73,12 +129,14 @@ export default function App() {
   }, [images]);
 
   const filteredImages = useFilteredAndSortedImages(sortBy, images, direction, prefix);
+  const selectedImage = useMemo(() => filteredImages.findIndex(i => i.id === viewingImage), [filteredImages, viewingImage]);
 
-  const { onPrev, onNext, onRandom } = useOnNavigation(selectedImage, filteredImages, setSelectedImage, viewingImage, setViewingImage);
+  const { onPrev, onNext, onRandom } = useOnNavigation(selectedImage, filteredImages, viewingImage, setViewingImage);
 
   const onPin = useCallback(async () => {
     if(selectedImage === undefined)
     {
+      console.error("Pinned but selected was not defined");
       return;
     }
     const {id} = filteredImages[selectedImage];
@@ -88,9 +146,8 @@ export default function App() {
     setImages((imgs) => imgs.map(i => i.id === id ? image : i));
     setViewingImage(undefined);
     setTimeout( () => setViewingImage(filteredImages[selectedImage+1]?.id), 1);
-  }, [filteredImages, selectedImage, setImages]);
+  }, [filteredImages, selectedImage, setViewingImage]);
 
-  const deleteSequenceCount = useRef(1);
   const onDelete = useCallback(async () => {
     if(selectedImage === undefined)
     {
@@ -114,7 +171,7 @@ export default function App() {
       console.error('Error deleting image:', err);
       setStatus('Error deleting image');
     }
-  }, [filteredImages, images, selectedImage, setImages]);
+  }, [filteredImages, images, selectedImage, setViewingImage]);
 
   const onRescan = useCallback(() => {
     fetch('/api/images', { method: 'post' });
@@ -128,10 +185,8 @@ export default function App() {
   useKeyboardHandlers(onPrev, onNext, onRandom, onDelete, selectedImage, setViewingImage, filteredImages, onPin, viewingImage);
 
   const onSelect = useCallback((imageId: string) => {
-    const imageIndex = filteredImages.findIndex(img => img.id === imageId);
-    setSelectedImage(imageIndex);
     setViewingImage(imageId);
-  }, [filteredImages]);
+  }, [setViewingImage]);
 
   const viewingImageRef = useMemo(() => images.find(i => i.id === viewingImage), [images, viewingImage]);
 
@@ -140,38 +195,36 @@ export default function App() {
     {
       if(direction === 'up')
       {
-        setDirection('down');
+        setSortByAndDirection(undefined, 'down');
       }
       else
       {
-        setDirection('up');
+        setSortByAndDirection(undefined, 'up');
       }
     }
     else
     {
-      setSortBy('name');
-      setDirection('up');
+      setSortByAndDirection('name','up');
     }
-  }, [direction, sortBy]);
+  }, [direction, setSortByAndDirection, sortBy]);
 
   const sortByDate = useCallback(() => {
     if(sortBy === 'mtime')
     {
       if(direction === 'up')
       {
-        setDirection('down');
+        setSortByAndDirection(undefined, 'down');
       }
       else
       {
-        setDirection('up');
+        setSortByAndDirection(undefined, 'up');
       }
     }
     else
     {
-      setSortBy('mtime');
-      setDirection('up');
+      setSortByAndDirection('mtime', 'up');
     }
-  }, [direction, sortBy]);
+  }, [direction, setSortByAndDirection, sortBy]);
 
   const onCopy = useCallback(() => {
     if(!viewingImageRef)
@@ -181,6 +234,7 @@ export default function App() {
 
     navigator.clipboard?.writeText(viewingImageRef.metadata);
     console.log(viewingImageRef.metadata);
+    // eslint-disable-next-line no-alert
     alert(viewingImageRef.metadata);
   }, [viewingImageRef]);
 
@@ -210,26 +264,17 @@ export default function App() {
         ))
       }
     </div>
-    <div id='view-container' className={viewingImage && 'visible'}>
-      <div id='view-tools-top'>
-        <button type='button' title={viewingImageRef?.metadata} onClick={onCopy}>c</button>
-      </div>
-      <img 
-        id='view-image' 
-        src={viewingImage ? `/api/images/${viewingImage}` : 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAI=;'} 
-        style={{ 
-          backgroundImage: `url("/api/thumbnails/${viewingImageRef?.id}")`
-        } } 
-        title={viewingImageRef?.name}/>
-        <div id='view-tools-bottom'>
-          <button type='button' onClick={onDelete}>-</button>
-          <button type='button' onClick={onPrev}>{'<'}</button>
-          <button type='button' onClick={onRandom}>{'!'}</button>
-          <button type='button' onClick={onNext}>{'>'}</button>
-          <button type='button' onClick={onPin}>+</button>
-          <button id='close-view-container-button' type='button' onClick={() => setViewingImage(undefined)}>X</button>
-        </div>
-    </div>
+    <ImageViewer 
+      viewingImage={viewingImage}
+      viewingImageRef={viewingImageRef}
+      onCopy={onCopy}
+      onDelete={onDelete}
+      onPrev={onPrev}
+      onRandom={onRandom} 
+      onNext={onNext}
+      onPin={onPin}
+      setViewingImage={setViewingImage}
+    />
   </div>;
 }
 
@@ -275,17 +320,17 @@ function useKeyboardHandlers(onPrev: () => void, onNext: () => void, onRandom: (
 
     window.addEventListener('keydown', handleKeys);
     return () => window.removeEventListener('keydown', handleKeys);
-  }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages, onPin, setViewingImage]);
+  }, [onNext, onPrev, onDelete, viewingImage, selectedImage, filteredImages, onPin, setViewingImage, onRandom]);
 }
 
 /**
  * Navigation helper functions
  */
-function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDImage[], setSelectedImage: (v:number) => void, viewingImage: string | undefined, setViewingImage: (v:string|undefined) => void) {
+function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDImage[], viewingImage: string | undefined, setViewingImage: (v:string|undefined) => void) {
   const updateViewingImage = useCallback((id: string) => {
     setViewingImage(undefined);
     
-    if(id != undefined)
+    if(id !== undefined)
     {
       setTimeout( () => setViewingImage(id), 1);
     }
@@ -299,9 +344,8 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
 
     const nextIndex = (selectedImage + 1) % filteredImages.length;
     console.log(`Navigating to next image: ${nextIndex}`);
-    setSelectedImage(nextIndex);
     updateViewingImage(filteredImages[nextIndex].id);
-  }, [selectedImage, filteredImages, setSelectedImage, updateViewingImage]);
+  }, [selectedImage, filteredImages, updateViewingImage]);
 
   const onPrev = useCallback(() => {
     if (selectedImage === undefined)
@@ -310,23 +354,18 @@ function useOnNavigation(selectedImage: number | undefined, filteredImages: ISDI
     const index = selectedImage;
     const prevIndex = index === 0 ? filteredImages.length - 1 : index - 1;
     const prevImage = filteredImages[prevIndex].id;
-    setSelectedImage(prevIndex);
     updateViewingImage(prevImage);
-  }, [selectedImage, filteredImages, setSelectedImage, viewingImage, updateViewingImage]);
+  }, [selectedImage, filteredImages, updateViewingImage]);
 
 
-  const randomOrderList = useMemo(() => {
-    return shuffle(filteredImages.map(i => i.id));
-  }, [filteredImages])
+  const randomOrderList = useMemo(() => shuffle(filteredImages.map(i => i.id)), [filteredImages])
 
   const onRandom = useCallback(() => {
     const currentIndex = viewingImage ? randomOrderList.indexOf(viewingImage) : -1;
     const nextIndex = (currentIndex+1) % randomOrderList.length;
     const nextImage = randomOrderList[nextIndex];
-    const nextRealIndex = filteredImages.findIndex(i => i.id === nextImage);
-    setSelectedImage(nextRealIndex);
     updateViewingImage(nextImage);
-  }, [randomOrderList, filteredImages.length, setSelectedImage, updateViewingImage, viewingImage]);
+  }, [viewingImage, randomOrderList, updateViewingImage]);
 
   return { onPrev, onNext, onRandom };
 }

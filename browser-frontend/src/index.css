@@ -1,0 +1,82 @@
+.image-transform-wrapper {
+  width: 100%;
+  height: calc(100% - 80px); /* Account for top/bottom toolbars */
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.image-transform-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#view-tools-top,
+#view-tools-bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 10px;
+}
+
+#view-tools-top {
+  display: flex;
+  justify-content: flex-end;
+
+    position: absolute;
+    z-index: 100000;
+    width: 100%;
+    top: 0;
+    left: 0;
+}
+
+#view-tools-bottom {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+
+  position: absolute;
+  z-index: 100000;
+  width: 100%;
+  bottom: 0;
+  left: 0;
+}
+
+#view-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+#view-tools-top button,
+#view-tools-bottom button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#view-tools-top button:hover,
+#view-tools-bottom button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.expander {
+    flex-grow: 1;
+    background-color: transparent;
+  }
+
+  .react-transform-wrapper
+  {
+    height: 100% !important;
+  }
