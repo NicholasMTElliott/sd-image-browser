@@ -29,15 +29,16 @@ export const ImageViewer = memo(({
 }: ImageViewerProps) => {
 
   const [transformComponentRef, setTransformComponentRef] = useState<ReactZoomPanPinchContentRef | null>(null);
-  const [image, setImageRef] = useState<HTMLImageElement | null>(null);
+  const [mediaRef, setMediaRef] = useState<HTMLImageElement | HTMLVideoElement | null>(null);
+  const isVideo = viewingImageRef?.extension?.toLowerCase() === 'mp4';
 
   const zoomToExtents = useCallback(() => {
-    if (!image) return;
+    if (!mediaRef) return;
     if (!transformComponentRef) return;
 
     const { zoomToElement } = transformComponentRef;
-    zoomToElement(image);
-  }, [image, transformComponentRef]);
+    zoomToElement(mediaRef);
+  }, [mediaRef, transformComponentRef]);
 
   return (
     <div id='view-container'className={viewingImage && 'visible'} >
@@ -83,17 +84,37 @@ export const ImageViewer = memo(({
               wrapperClass="image-transform-wrapper"
               contentClass="image-transform-content"
             >
-              <img 
-                ref={setImageRef}
-                id='view-image' 
-                alt="Gallery Content"
-                src={viewingImage ? `/api/images/${viewingImage}` : 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAI=;'} 
-                style={{ 
-                  backgroundImage: `url("/api/thumbnails/${viewingImageRef?.id}")`
-                }} 
-                title={viewingImageRef?.name}
-                onLoad={zoomToExtents}
-              />
+              {isVideo ? (
+                <video
+                  ref={setMediaRef as (ref: HTMLVideoElement | null) => void}
+                  id='view-video'
+                  controls
+                  autoPlay
+                  loop
+                  style={{
+                    backgroundImage: `url("/api/thumbnails/${viewingImageRef?.id}")`,
+                    maxWidth: '100%',
+                    maxHeight: '100%'
+                  }}
+                  title={viewingImageRef?.name}
+                  onLoadedMetadata={zoomToExtents}
+                >
+                  <source src={viewingImage ? `/api/images/${viewingImage}` : ''} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+              ) : (
+                <img 
+                  ref={setMediaRef as (ref: HTMLImageElement | null) => void}
+                  id='view-image' 
+                  alt="Gallery Content"
+                  src={viewingImage ? `/api/images/${viewingImage}` : 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAI=;'} 
+                  style={{ 
+                    backgroundImage: `url("/api/thumbnails/${viewingImageRef?.id}")`
+                  }} 
+                  title={viewingImageRef?.name}
+                  onLoad={zoomToExtents}
+                />
+              )}
             </TransformComponent>
         )}
       </TransformWrapper>

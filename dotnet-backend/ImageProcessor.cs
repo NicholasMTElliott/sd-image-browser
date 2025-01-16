@@ -7,6 +7,7 @@ using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Formats.Png;
 using FFMpegCore;
 using FFMpegCore.Pipes;
+using FFMpegCore.Arguments;
 
 namespace ImageScanner;
 
@@ -308,20 +309,26 @@ public class ImageProcessor
                 // Generate thumbnail from video
                 if(existingPreview == null)
                 {
-                    using var memoryStream = new MemoryStream();
-                    await FFMpegArguments
-                        .FromFileInput(file)
-                        .OutputToPipe(new StreamPipeSink(memoryStream), options => options
-                            .Seek(TimeSpan.FromSeconds(1)) // Grab frame at 1 second
-                            .WithVideoCodec("mjpeg")
-                            .WithCustomArgument("-vframes 1")
-                            .WithCustomArgument("-s 96x96"))
-                        .ProcessAsynchronously();
-
-                    memoryStream.Position = 0;
-                    var preview = new ImagePreview(hash, memoryStream.ToArray(), size, "jpg");
-                    await _context.CreateImagePreviewAsync(preview);
-                    _logger.LogInformation("Created thumbnail for video {File}", file);
+                    var tempOutputPath = Path.Combine("/tmp", $"thumb_{Guid.NewGuid()}.gif");
+                    try 
+                    {
+                        // Calculate frames needed for 4 FPS
+                        var totalFrames = Math.Max(1, (int)(durationSeconds * 4));
+                        var frameInterval = durationSeconds / totalFrames;
+                        
+                        await FFMpeg.GifSnapshotAsync(file, tempOutputPath, new System.Drawing.Size(96, 96), duration: TimeSpan.FromSeconds(Math.Min(durationSeconds??2,2)));
+                        
+                        var preview = new ImagePreview(hash, File.ReadAllBytes(tempOutputPath), size, "gif");
+                        await _context.CreateImagePreviewAsync(preview);
+                        _logger.LogInformation("Created animated thumbnail for video {File}", file);
+                    }
+                    finally
+                    {
+                        if (File.Exists(tempOutputPath))
+                        {
+                            File.Delete(tempOutputPath);
+                        }
+                    }
                 }
             }
             catch(Exception ex)
