@@ -80,3 +80,50 @@
   {
     height: 100% !important;
   }
+
+#tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 16px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #333;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+#tabs button {
+  padding: 12px 24px;
+  background: #2a2a2a;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #999;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+#tabs button:hover {
+  background: #333;
+  color: #fff;
+}
+
+#tabs button.selected {
+  background: #333;
+  border-bottom-color: #0088ff;
+  color: #fff;
+}
+
+/* For WebKit browsers */
+#tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+#tabs::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+#tabs::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}

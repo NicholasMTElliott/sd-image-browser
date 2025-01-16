@@ -239,11 +239,18 @@ export default function App() {
   }, [viewingImageRef]);
 
   return <div id='browser-page'>
-    <div id='tabs'>
-      {
-        prefixes.map(p => <button type="button" onClick={() => setPrefix(p)}>{p}</button>)        
-      }
-    </div>
+    <nav id='tabs'>
+      {prefixes.map(p => (
+        <button 
+          key={p}
+          type="button" 
+          className={p === prefix ? 'selected' : ''} 
+          onClick={() => setPrefix(p)}
+        >
+          {p.split('/').pop()}
+        </button>
+      ))}
+    </nav>
     <div id='browser'>
       <div id='toolbar'>
         <div>{isLoading ? 'Refreshing...' : status}</div>

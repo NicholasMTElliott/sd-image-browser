@@ -4,9 +4,9 @@ using System.Security.Cryptography;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Formats.Png;
-using Microsoft.Extensions.Logging;
+using FFMpegCore;
+using FFMpegCore.Pipes;
 
 namespace ImageScanner;
 
@@ -26,6 +26,7 @@ public enum ProcessingStatus
 public class ImageProcessor
 {
     public readonly static string[] SupportedImages = ["png", "jpg", "webp", "jpeg", "gif"];
+    public readonly static string[] SupportedVideos = ["mp4"];
     private ProcessingStatus _currentStatus = ProcessingStatus.None;
     private Timer? _timer;
     private readonly SemaphoreSlim _lock = new SemaphoreSlim(1);
@@ -167,14 +168,22 @@ public class ImageProcessor
             return;
         }
 
-        var fileExtension =  Path.GetExtension(file).ToLower().Substring(1); // Remove the dot
-        if(!SupportedImages.Any(ext => ext.ToLower() == fileExtension))
+        // Fix the extension parsing
+        var fileExtension = Path.GetExtension(file).TrimStart('.').ToLower();
+        if(string.IsNullOrEmpty(fileExtension))
+        {
+            _logger.LogDebug("Skipping file without extension: {File}", file);
+            return;
+        }
+
+        bool isVideo = SupportedVideos.Contains(fileExtension);
+        if(!SupportedImages.Contains(fileExtension) && !isVideo)
         {
             return;
         }
 
         // Convert non-webp and non-gif images to webp format
-        if(fileExtension != "gif" && fileExtension != "webp")
+        if(!isVideo && fileExtension != "gif" && fileExtension != "webp")
         {
             _logger.LogInformation("Converting {File} ({Size} bytes) from {OriginalFormat} to WebP", 
                 file, new FileInfo(file).Length, fileExtension);
@@ -288,7 +297,40 @@ public class ImageProcessor
         _logger.LogDebug("File {File} hash: {Hash}", file, hash);
         
         var existingPreview = await _context.GetImagePreviewAsync(hash);
-        if(existingPreview == null)
+        int? durationSeconds = null;
+        if(isVideo)
+        {
+            try
+            {
+                var mediaInfo = await FFProbe.AnalyseAsync(file);
+                durationSeconds = (int)mediaInfo.Duration.TotalSeconds;
+                
+                // Generate thumbnail from video
+                if(existingPreview == null)
+                {
+                    using var memoryStream = new MemoryStream();
+                    await FFMpegArguments
+                        .FromFileInput(file)
+                        .OutputToPipe(new StreamPipeSink(memoryStream), options => options
+                            .Seek(TimeSpan.FromSeconds(1)) // Grab frame at 1 second
+                            .WithVideoCodec("mjpeg")
+                            .WithCustomArgument("-vframes 1")
+                            .WithCustomArgument("-s 96x96"))
+                        .ProcessAsynchronously();
+
+                    memoryStream.Position = 0;
+                    var preview = new ImagePreview(hash, memoryStream.ToArray(), size, "jpg");
+                    await _context.CreateImagePreviewAsync(preview);
+                    _logger.LogInformation("Created thumbnail for video {File}", file);
+                }
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError(ex, "Failed to process video file {File}", file);
+                return;
+            }
+        }
+        else if(existingPreview == null)
         {
             // Create a thumbnail
             using(var stream = new BufferedStream(File.OpenRead(file), Math.Min(

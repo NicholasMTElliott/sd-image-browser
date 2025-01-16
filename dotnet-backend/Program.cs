@@ -82,16 +82,33 @@ try
         }
     });
 
-    app.MapGet("/api/images/{imageId}", async (Guid imageId) => {
+    app.MapGet("/api/images/{imageId}", async (Guid imageId, HttpContext context) => {
         try
         {
-            // List all known images
-            using (var context = new DbContext(sourceDir))
+            using (var dbContext = new DbContext(sourceDir))
             {
-                var entry = await context.GetImageEntryAsync(imageId);
+                var entry = await dbContext.GetImageEntryAsync(imageId);
                 if(entry == null)
                 {
                     return Results.NotFound();
+                }
+
+                var fullPath = Path.Combine(sourceDir, entry.FullFileName);
+                var lastModified = DateTimeOffset.Parse(entry.Modified);
+
+                bool isVideo = ImageProcessor.SupportedVideos.Contains(entry.Extension.ToLower());
+                if(isVideo)
+                {
+                    // Handle video streaming
+                    var fileInfo = new FileInfo(fullPath);
+                    var response = context.Response;
+                    response.Headers.Append("Content-Type", "video/mp4");
+                    response.Headers.Append("Content-Length", fileInfo.Length.ToString());
+                    response.Headers.Append("Accept-Ranges", "bytes");
+
+                    using var stream = File.OpenRead(fullPath);
+                    await stream.CopyToAsync(response.Body);
+                    return Results.Empty;
                 }
 
                 if(entry.Extension.ToLower() == "gif")

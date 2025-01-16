@@ -11,6 +11,7 @@
     <PackageReference Include="dapper" Version="2.1.35" />
     <PackageReference Include="microsoft.data.sqlite" Version="8.0.8" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
+    <PackageReference Include="FFMpegCore" Version="5.1.0" />
   </ItemGroup>
 
 </Project>
