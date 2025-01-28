@@ -25,6 +25,7 @@ export const ImageThumbnail = React.memo((props: {
   return <button
     type="button"
     onClick={onClick}
+    title={image.name}
     className={`image-container ${isSelected ? 'selected' : ''} ${hasError ? 'error' : ''}`}
     key={image.id}>
     <img 

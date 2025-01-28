@@ -50,7 +50,7 @@ export const ImageViewer = memo(({
         >
           <FiCopy />
         </button>
-        <button type='button' title="Pin Image" onClick={onPin}>
+        <button type='button' title={`Pin ${viewingImageRef?.name}`} onClick={onPin}>
         <FiStar />
         </button>
         <div className='expander' />
@@ -86,7 +86,7 @@ export const ImageViewer = memo(({
             >
               {isVideo ? (
                 <video
-                  ref={setMediaRef as (ref: HTMLVideoElement | null) => void}
+                  ref={setMediaRef}
                   id='view-video'
                   controls
                   autoPlay
@@ -100,11 +100,12 @@ export const ImageViewer = memo(({
                   onLoadedMetadata={zoomToExtents}
                 >
                   <source src={viewingImage ? `/api/images/${viewingImage}` : ''} type="video/mp4" />
+                  <track kind="captions" />
                   Your browser does not support the video tag.
                 </video>
               ) : (
                 <img 
-                  ref={setMediaRef as (ref: HTMLImageElement | null) => void}
+                  ref={setMediaRef}
                   id='view-image' 
                   alt="Gallery Content"
                   src={viewingImage ? `/api/images/${viewingImage}` : 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEAAAAALAAAAAABAAEAAAI=;'} 
