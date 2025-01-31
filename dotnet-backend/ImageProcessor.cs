@@ -68,7 +68,7 @@ public class ImageProcessor
     public void StartTimer()
     {
         _timer = new Timer((t) => {
-            _ = ExecuteInventoryUpdate();
+            _ = ExecuteInventoryUpdate(true);
         }, null, TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15) );
     }
 
@@ -76,7 +76,7 @@ public class ImageProcessor
     /// Starts an asynchronous job that scans for new images, processes them, and
     /// removes any images no longer present. The result is tracked in _currentStatus.
     /// </summary>
-    private async Task ExecuteInventoryUpdate()
+    private async Task ExecuteInventoryUpdate(bool newOnly = false)
     {
         _logger.LogInformation("Starting inventory update at {Timestamp}", DateTimeOffset.UtcNow);
         await _lock.WaitAsync();
@@ -93,16 +93,19 @@ public class ImageProcessor
                             SupportedVideos.Contains(Path.GetExtension(f).TrimStart('.').ToLower()));
             _logger.LogInformation("Found {Count} eligable files in {SourceDir}", files.Count(), _sourceDir);
             // split this into two sections: Items that don't already exist in the database and then items that do.
-            var newFiles = files.Where(f => _context.GetImageEntryAsync(Path.GetRelativePath(_sourceDir, f)).Result == null);
-            var oldFiles = files.Where(f => !newFiles.Contains(f));
+            var newFiles = files.Where(f => _context.GetImageEntryAsync(Path.GetRelativePath(_sourceDir, f)).Result == null);            
             foreach(var file in newFiles)
             {
                 await ScanFile(file);
             }
 
-            foreach(var file in oldFiles)
+            if(!newOnly)
             {
-                await ScanFile(file);
+                var oldFiles = files.Where(f => !newFiles.Contains(f));
+                foreach(var file in oldFiles)
+                {
+                    await ScanFile(file);
+                }
             }            
             await _context.ClearUnseen(timestamp);
             _currentStatus = ProcessingStatus.Done;
