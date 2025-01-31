@@ -93,18 +93,32 @@ public class ImageProcessor
                             SupportedVideos.Contains(Path.GetExtension(f).TrimStart('.').ToLower()));
             _logger.LogInformation("Found {Count} eligable files in {SourceDir}", files.Count(), _sourceDir);
             // split this into two sections: Items that don't already exist in the database and then items that do.
-            var newFiles = files.Where(f => _context.GetImageEntryAsync(Path.GetRelativePath(_sourceDir, f)).Result == null);            
-            foreach(var file in newFiles)
+            var newFiles = files.Where(f => _context.GetImageEntryAsync(Path.GetRelativePath(_sourceDir, f)).Result == null).ToList();   
+            _logger.LogInformation("Found {Count} new files in {SourceDir}", newFiles.Count, _sourceDir);         
+            for(var i = 0; i < newFiles.Count; ++i)
             {
+                var file = newFiles[i];
                 await ScanFile(file);
+                if(i % 10 == 9)
+                {
+                    _logger.LogInformation("Progress: {Processed}/{Total} files in {Directory}", 
+                        i+1, newFiles.Count, _sourceDir);
+                }
             }
 
             if(!newOnly)
-            {
-                var oldFiles = files.Where(f => !newFiles.Contains(f));
-                foreach(var file in oldFiles)
+            {    
+                var oldFiles = files.Where(f => !newFiles.Contains(f)).ToList();
+                _logger.LogInformation("Validaing {Count} known files in {SourceDir}", oldFiles.Count, _sourceDir);   
+                for(var i = 0; i < oldFiles.Count; ++i)
                 {
+                    var file = oldFiles[i];
                     await ScanFile(file);
+                    if(i % 10 == 9)
+                    {
+                        _logger.LogInformation("Progress: {Processed}/{Total} files in {Directory}", 
+                            i+1, oldFiles.Count, _sourceDir);
+                    }
                 }
                 await _context.ClearUnseen(timestamp);
             }            
