@@ -86,7 +86,24 @@ public class ImageProcessor
             _currentStatus = ProcessingStatus.Processing;
             var timestamp = DateTimeOffset.UtcNow;
             _logger.LogInformation("Processing directory {SourceDir} with status {Status}", _sourceDir, _currentStatus);
-            await IterateDirectory(_sourceDir);
+            //await IterateDirectory(_sourceDir);
+
+            var files = Directory.EnumerateFiles(_sourceDir, "*", SearchOption.AllDirectories)
+                .Where(f => SupportedImages.Contains(Path.GetExtension(f).TrimStart('.').ToLower()) || 
+                            SupportedVideos.Contains(Path.GetExtension(f).TrimStart('.').ToLower()));
+            _logger.LogInformation("Found {Count} eligable files in {SourceDir}", files.Count(), _sourceDir);
+            // split this into two sections: Items that don't already exist in the database and then items that do.
+            var newFiles = files.Where(f => _context.GetImageEntryAsync(Path.GetRelativePath(_sourceDir, f)).Result == null);
+            var oldFiles = files.Where(f => !newFiles.Contains(f));
+            foreach(var file in newFiles)
+            {
+                await ScanFile(file);
+            }
+
+            foreach(var file in oldFiles)
+            {
+                await ScanFile(file);
+            }            
             await _context.ClearUnseen(timestamp);
             _currentStatus = ProcessingStatus.Done;
         }
