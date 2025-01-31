@@ -106,8 +106,8 @@ public class ImageProcessor
                 {
                     await ScanFile(file);
                 }
+                await _context.ClearUnseen(timestamp);
             }            
-            await _context.ClearUnseen(timestamp);
             _currentStatus = ProcessingStatus.Done;
         }
         catch(Exception ex)
