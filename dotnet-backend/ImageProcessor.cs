@@ -297,10 +297,15 @@ public class ImageProcessor
         var path = Path.GetRelativePath(_sourceDir, GetDirectoryNameWithCheck(file));
         var name = Path.GetFileNameWithoutExtension(file);
         var relativeFilename = Path.GetRelativePath(_sourceDir, file);
+        var lastModified = File.GetLastWriteTimeUtc(file).ToString("o");
         var existingEntry = await _context.GetImageEntryAsync(relativeFilename);
+
         if(existingEntry != null)
         {
             // We already have this file
+            // TODO -- compare additional metadata like size and lastModified
+            // and if there is a change, rescan and update it
+            
             await _context.UpdateLastSeenAsync(existingEntry.Id);
             return;
         }
@@ -350,7 +355,7 @@ public class ImageProcessor
                         var totalFrames = Math.Max(1, (int)(durationSeconds * 4));
                         var frameInterval = durationSeconds / totalFrames;
                         
-                        await FFMpeg.GifSnapshotAsync(file, tempOutputPath, new System.Drawing.Size(96, 96), duration: TimeSpan.FromSeconds(Math.Min(durationSeconds??2,2)));
+                        await FFMpeg.GifSnapshotAsync(file, tempOutputPath, new System.Drawing.Size(96, 96), duration: TimeSpan.FromSeconds(Math.min(durationSeconds??2,2)));
                         
                         var preview = new ImagePreview(hash, File.ReadAllBytes(tempOutputPath), size, "gif");
                         await _context.CreateImagePreviewAsync(preview);
@@ -400,7 +405,7 @@ public class ImageProcessor
         }
         
         var imageEntry = new ImageEntry(Guid.NewGuid().ToString(), relativeFilename, path, name, fileExtension, String.Join('|', tags),
-            hash, metadata, DateTimeOffset.UtcNow.ToString("o"), DateTimeOffset.UtcNow.ToString("o"));
+            hash, metadata, lastModified, DateTimeOffset.UtcNow.ToString("o"));
         await _context.CreateImageEntryAsync(imageEntry);
         
         var duration = DateTimeOffset.UtcNow - startTime;
