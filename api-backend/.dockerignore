@@ -1,6 +1,0 @@
-.vscode
-dist
-.editorconfig
-.gitignore
-Dockerfile
-!.yarn/*
