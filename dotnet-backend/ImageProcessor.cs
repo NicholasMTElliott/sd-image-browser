@@ -34,6 +34,7 @@ public class ImageProcessor
     private readonly string _sourceDir;
     private readonly DbContext _context;
     private readonly ILogger<ImageProcessor> _logger;
+    private readonly System.IO.FileSystemWatcher _watcher;
     private readonly WebpEncoder _thumbnailEncoder  = new WebpEncoder()
         {
             Quality = 50
@@ -57,6 +58,17 @@ public class ImageProcessor
         _sourceDir = sourceDir;
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        _watcher = new System.IO.FileSystemWatcher
+        {
+            Path = _sourceDir,
+            Filter = "*.*",
+            NotifyFilter = System.IO.NotifyFilters.FileName | System.IO.NotifyFilters.CreationTime,
+            EnableRaisingEvents = true,
+            IncludeSubdirectories = true
+        };
+        
+        SetupFileWatcher(sourceDir);
     }
 
     // Method to queue an inventory update
@@ -138,54 +150,6 @@ public class ImageProcessor
             _lock.Release();
             _logger.LogInformation("END: {Name}", nameof(ExecuteInventoryUpdate));
         }
-    }
-
-    /// <summary>
-    /// Recursively iterates through subdirectories and processes any discovered image files.
-    /// </summary>
-    private async Task IterateDirectory(string dir)
-    {
-        var startTime = DateTimeOffset.UtcNow;
-        _logger.LogInformation("Processing directory {Directory}", dir);
-        
-        _logger.LogInformation(nameof(IterateDirectory));
-        _logger.LogInformation(dir);
-        if(!Directory.Exists(dir))
-        {
-            return;
-        }
-        var path = Path.GetRelativePath(_sourceDir, dir);
-        var subdirs = Directory.EnumerateDirectories(dir);
-        foreach(var subdir in subdirs)
-        {
-            try
-            {
-                await IterateDirectory(subdir);
-            }
-            catch(Exception ex)
-            {
-                _logger.LogError(ex, "Exception processing subdirectory {Subdir}: {Message}", subdir, ex.Message);
-                _logger.LogError(ex.StackTrace);
-            }
-            await Task.Delay(0);
-        }
-
-        var files = Directory.EnumerateFiles(dir);
-        var fileCount = files.Count();
-        _logger.LogInformation("Found {Count} files in directory {Directory}", fileCount, dir);
-        var processedCount = 0;
-        
-        foreach(var file in files)
-        {
-            await ScanFile(file);
-            processedCount++;
-            _logger.LogDebug("Progress: {Processed}/{Total} files in {Directory}", 
-                processedCount, fileCount, dir);
-        }
-        
-        var duration = DateTimeOffset.UtcNow - startTime;
-        _logger.LogInformation("Completed directory {Directory} in {Duration}ms", 
-            dir, duration.TotalMilliseconds);
     }
 
     /// <summary>
@@ -305,7 +269,7 @@ public class ImageProcessor
             // We already have this file
             // TODO -- compare additional metadata like size and lastModified
             // and if there is a change, rescan and update it
-            
+
             await _context.UpdateLastSeenAsync(existingEntry.Id);
             return;
         }
@@ -355,7 +319,7 @@ public class ImageProcessor
                         var totalFrames = Math.Max(1, (int)(durationSeconds * 4));
                         var frameInterval = durationSeconds / totalFrames;
                         
-                        await FFMpeg.GifSnapshotAsync(file, tempOutputPath, new System.Drawing.Size(96, 96), duration: TimeSpan.FromSeconds(Math.min(durationSeconds??2,2)));
+                        await FFMpeg.GifSnapshotAsync(file, tempOutputPath, new System.Drawing.Size(96, 96), duration: TimeSpan.FromSeconds(Math.Min(durationSeconds??2,2)));
                         
                         var preview = new ImagePreview(hash, File.ReadAllBytes(tempOutputPath), size, "gif");
                         await _context.CreateImagePreviewAsync(preview);
@@ -531,5 +495,22 @@ public class ImageProcessor
             throw new ArgumentException($"Cannot get directory name for {fileName}");
         }
         return directoryName;
+    }
+
+    public void SetupFileWatcher(string folderPath)
+    {
+        _watcher.Created += OnFileCreated;
+        _logger.LogInformation($"File watcher started on: {folderPath}");
+    }
+
+    private void OnFileCreated(object sender, System.IO.FileSystemEventArgs e)
+    {
+        if(SupportedImages.Contains(Path.GetExtension(e.FullPath).TrimStart('.').ToLower()) || 
+                            SupportedVideos.Contains(Path.GetExtension(e.FullPath).TrimStart('.').ToLower()))
+        {
+            _logger.LogInformation($"New file detected: {e.FullPath}");
+            // Invoke ScanFile on the newly created file
+            ScanFile(e.FullPath);
+        }
     }
 }
