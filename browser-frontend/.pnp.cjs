@@ -4439,10 +4439,10 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["json5", [\
-      ["npm:1.0.1", {\
-        "packageLocation": "./.yarn/cache/json5-npm-1.0.1-647fc8794b-ecb5ab4e23.zip/node_modules/json5/",\
+      ["npm:1.0.2", {\
+        "packageLocation": "./.yarn/cache/json5-npm-1.0.2-9607f93e30-a78d812dbb.zip/node_modules/json5/",\
         "packageDependencies": [\
-          ["json5", "npm:1.0.1"],\
+          ["json5", "npm:1.0.2"],\
           ["minimist", "npm:1.2.7"]\
         ],\
         "linkType": "HARD"\
@@ -7695,7 +7695,7 @@ const RAW_RUNTIME_STATE =
         "packageDependencies": [\
           ["tsconfig-paths", "npm:3.14.1"],\
           ["@types/json5", "npm:0.0.29"],\
-          ["json5", "npm:1.0.1"],\
+          ["json5", "npm:1.0.2"],\
           ["minimist", "npm:1.2.7"],\
           ["strip-bom", "npm:3.0.0"]\
         ],\
